@@ -1,0 +1,47 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Run Go Generate
+        run: go generate
+
+      - name: Build Binaries
+        run: |
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -trimpath -o dstn.exe
+          
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -trimpath -o dstn
+
+      - name: Package Release Assets
+        run: |
+          cp LICENSE-APACHE LICENSE
+          
+          zip dstn-windows-amd64.zip dstn.exe LICENSE
+          
+          tar -czvf dstn-linux-amd64.tar.gz dstn LICENSE
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dstn-windows-amd64.zip
+            dstn-linux-amd64.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

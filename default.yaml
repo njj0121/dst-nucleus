@@ -1,0 +1,159 @@
+# ==========================================
+# dst-nucleus core configuration
+# ==========================================
+
+# absolute path to persistent storage root.
+# leave empty to use system default (e.g., ~/.klei or ~/Documents/Klei).
+storage_root: ""
+
+# [ADVANCED] Leave blank. Auto-resolved via SteamCMD. Override ONLY if you manually altered the default directory tree.
+game_dir: ""
+
+# cluster directory name.
+cluster_name: "MyDediServer"
+
+# [OPTIONAL] Leave empty. The engine will fallback to native OS defaults:
+# Windows: C:\steamcmd  |  Linux: $HOME/Steam
+steamcmd_path: ""
+
+# [MOD SYNC] Master Lua backup. Default: <DST_DIR>/mods/dst-nucleus_backup.lua
+# BEHAVIOR: Force-overwrites 'target' on EVERY boot. 
+# WARNING: Engine will NOT generate this. If missing, NO-OP. Pre-provision manually.
+mod_setup_backup: ""
+
+# [ADVANCED] Target destination. Default: <DST_DIR>/mods/dedicated_server_mods_setup.lua
+# WARNING: DO NOT touch unless you physically restructure the DST server. Leave blank.
+mod_setup_target: ""
+
+# [TEMPLATE] Universal mod overrides. 
+# Force-overwrites 'modoverrides.lua' in BOTH Master and Caves on boot.
+# NO DEFAULT. Leave empty or if file is missing to disable sync (NO-OP).
+mod_overrides_path: ""
+
+# [TEMPLATE] Master shard world generation override. 
+# Force-overwrites 'worldgenoverride.lua' in Master directory on boot.
+# NO DEFAULT. Leave empty to disable sync (NO-OP).
+master_server_lua: ""
+
+# [TEMPLATE] Caves shard world generation override. 
+# Force-overwrites 'worldgenoverride.lua' in Caves directory on boot.
+# NO DEFAULT. Leave empty to disable sync (NO-OP).
+caves_server_lua: ""
+
+# When enabled, it continuously probes the in-game state, allowing you to 
+# view underlying game data via the API.
+# Note: This polling process consumes a minimal amount of game performance.
+enable_parasite: true
+
+# Klei dedicated server authentication token.
+# If provided, it will automatically be written to cluster_token.txt.
+# Leave blank ("") to do nothing.
+cluster_token: ""
+
+# http management api bind address (e.g., 127.0.0.1:20888 or /tmp/dst.sock).
+http_api_listen: "127.0.0.1:20888"
+
+# Server announcement language. 
+# Note: This only affects in-game chat. Console logs remain unaffected.
+# Supported values: zh (简体中文), zh-t (繁體中文), en (English), jp (日本語).
+# Defaults to zh if left blank or unrecognized.
+announcement_language: en
+
+# trigger installation sequence if binaries are missing.
+auto_bootstrap: false
+
+# bypass 32-bit library validation on linux platforms.
+skip_linux_lib32_check: false
+
+# allow execution under root privileges (not recommended).
+permit_root_usage: false
+
+# automatically boot shards after daemon initialization.
+auto_start: true
+
+# Enable continuous background detection for game/mod updates while the server is running.
+# NOTE: This setting ONLY affects runtime monitoring. A mandatory update validation 
+# is ALWAYS performed before the server starts, regardless of this value.
+auto_update: true
+
+# interval between update queries in seconds (minimum 60).
+update_interval: 600
+
+# [AUTO-UPDATE] Max duration (seconds) for in-game broadcast warnings when Game/Mod updates are detected.
+# BEHAVIOR: Force-kills the server after timeout. 
+# SHORT-CIRCUIT: If server empties (0 players) during countdown, the wait is bypassed and restarts IMMEDIATELY.
+# DANGER: Set to 0 to disable warnings and execute an instant reboot. (Will ruthlessly sever active boss fights).
+graceful_restart_wait: 480
+
+# [NOOB-TRAP] Auto-generate vanilla Klei configuration files. 
+# STRONGLY RECOMMENDED: false. 
+# If true, the engine will ruthlessly overwrite these 3 core files with basic, hardcoded defaults just to force a "one-click boot":
+#   1. <SAVE_DIR>/cluster.ini
+#   2. <SAVE_DIR>/Master/server.ini
+#   3. <SAVE_DIR>/Caves/server.ini
+# Set to true ONLY if you have absolutely no idea what you are doing. Otherwise, keep it false and manually manage your INIs.
+auto_gen_default_configs: false
+
+# [SUPERVISOR] Embraces the "Let it crash" philosophy. 
+# ANY process termination not explicitly triggered by an update is a fatal crash.
+# true: The engine will ruthlessly resurrect the dead game process.
+# false: The engine terminates itself and dies alongside the game process.
+crash_restart: true
+
+# ==========================================================
+# [TOPOLOGY] Shard Process & SSE Epoch Routing
+# ==========================================================
+# WARNING: If BOTH enable_master and enable_caves are true (Monolithic deployment), 
+# IGNORE ALL URL FIELDS below. The engine handles internal routing automatically.
+
+# ---------------- MASTER NODE ----------------
+enable_master: true
+
+# [SPLIT-DEPLOYMENT] [OPTIONAL: ONE-WAY SUICIDE PACT] Remote SSE stream to sync Caves epoch.
+# RESILIENCE: 100% tolerant of network partitions. Will silently reconnect.
+# TRIGGER: Leave blank to IGNORE Caves' death. If filled, the Master will suicide and reboot ONLY if it reconnects and detects a mutated Caves Epoch ID.
+# Example: http://<CAVES_IP>:<PORT>/api/epoch/caves
+caves_epoch_url: ""
+
+# ---------------- CAVES NODE ----------------
+enable_caves: true
+
+# [SPLIT-DEPLOYMENT] [OPTIONAL: ONE-WAY SUICIDE PACT] Remote SSE stream to sync Master epoch.
+# RESILIENCE: 100% tolerant of network partitions. Will silently reconnect.
+# TRIGGER: Leave blank to IGNORE Master's death. If filled, the Caves will suicide and reboot ONLY if it reconnects and detects a mutated Master Epoch ID.
+# Example: http://<MASTER_IP>:<PORT>/api/epoch/master
+master_epoch_url: ""
+
+# [SPLIT-DEPLOYMENT] [OPTIONAL] Push cave-specific telemetry/state back to Master.
+# Example: http://<MASTER_IP>:<PORT>/api/update/state
+caves_state_report_url: ""
+
+
+
+# =====================================================================
+# Logging & Output Configuration
+# 
+# NOTE: The following 4 options are completely independent. 
+# Console output and file writing do not affect each other.
+# WARNING: DST generates a massive amount of logs. If you enable file writing, please clean them up yourself regularly.
+# =====================================================================
+
+# Enable real-time console output for the Master server. (true/false)
+master_log: true
+
+# Enable real-time console output for the Caves server. (true/false)
+caves_log: false
+
+# File path for the Master server log.
+# Leave blank ("") to disable file writing.
+master_log_file: ""
+
+# File path for the Caves server log.
+# Leave blank ("") to disable file writing.
+caves_log_file: ""
+
+# Enable CPU scheduling inflation detection. Data is accessible via the API.
+# NOTE: This probe is written in pure assembly (cannot be inlined by the compiler). 
+# When enabled, it forcibly consumes approximately 2 microseconds of CPU time 
+# every 500ms, which will introduce a physical overhead to the CPU's micro-performance.
+enable_cpu_inflation_probe: false

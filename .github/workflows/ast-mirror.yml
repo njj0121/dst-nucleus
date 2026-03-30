@@ -1,0 +1,53 @@
+name: AST Auto-Mirror (ZH -> EN)
+
+on:
+  push:
+    branches:
+      - main
+
+
+
+jobs:
+  compile-to-english:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Setup Go Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21' 
+
+      - name: Run AST Translator
+        run: |
+          echo "Starting AST translation..."
+          go run translator.go -lang=en
+          echo "Translation completed."
+          
+      - name: Force Push to en-mirror Branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Changes detected, committing translated source..."
+            
+            git checkout -b temp-mirror-branch
+            
+            git add .
+            
+            git commit -m "docs: sync automated english mirror [skip ci]"
+            
+            git push --force origin temp-mirror-branch:en-mirror
+            
+            echo "Successfully force-pushed to en-mirror!"
+          else
+            echo "No translation changes detected. Skipping push."
+          fi

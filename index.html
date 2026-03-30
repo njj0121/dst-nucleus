@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!--这只是我让ai随手搓出来方便我调试的ui，我觉得看着还可以，就留着了-->
+
+<head>
+    <meta charset="UTF-8">
+    <title>DST-Nucleus Terminal</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --panel: #141414;
+            --text: #00ff00;
+            --border: #333;
+            --btn: #222;
+            --btn-hover: #444;
+            --danger: #cc0000;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Consolas, monospace;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .sidebar-left {
+            width: 240px;
+            background: var(--panel);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-sizing: border-box;
+            min-width: 0;
+        }
+
+        .sidebar-right {
+            width: 280px;
+            background: var(--panel);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        h3 {
+            margin-top: 0;
+            font-size: 14px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+            color: #fff;
+            position: sticky;
+            top: 0;
+            background: var(--panel);
+        }
+
+        button {
+            background: var(--btn);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 8px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            text-align: left;
+            transition: none;
+        }
+
+        button:hover {
+            background: var(--btn-hover);
+            color: #fff;
+        }
+
+        .danger-btn {
+            color: #ff6666;
+            border-color: #552222;
+        }
+
+        .danger-btn:hover {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        #editor {
+            flex: 1;
+            background: #000;
+            color: #ccc;
+            border: 1px solid var(--border);
+            padding: 10px;
+            font-family: Consolas, monospace;
+            font-size: 14px;
+            resize: none;
+            outline: none;
+            white-space: pre;
+        }
+
+        #status-bar {
+            margin-top: 10px;
+            padding: 5px;
+            font-size: 12px;
+            background: #002200;
+            border: 1px solid #005500;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="sidebar-left">
+        <div class="section">
+            <h3>CORE CONTROL</h3>
+            <button onclick="req('/api/start', 'POST')">Start</button><br>
+            <button onclick="req('/api/stop', 'POST')" class="danger-btn">Stop</button><br>
+            <button onclick="req('/api/restart', 'POST')" class="danger-btn">Restart</button><br>
+        </div>
+        <div class="section">
+            <h3>CONFIG</h3>
+            <button onclick="loadFile('cluster')">LOAD Cluster.ini</button><br>
+            <button onclick="loadFile('master_server')">LOAD Master/server.ini</button><br>
+            <button onclick="loadFile('caves_server')">LOAD Caves/server.ini</button><br>
+            <button onclick="loadFile('master_world')">LOAD Master worldgenoverride.lua</button><br>
+            <button onclick="loadFile('caves_world')">LOAD Caves worldgenoverride.lua</button><br>
+            <button onclick="loadFile('master_mod')">LOAD Master modoverrides.lua</button><br>
+            <button onclick="loadFile('caves_mod')">LOAD Caves modoverrides.lua</button><br>
+            <button onclick="loadFile('setup')">LOAD dedicated_server_mods_setup.lua</button><br>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="editor-header">
+            <span id="current-file" style="color: #fff; font-weight: bold;">[NO TARGET] - SELECT FROM LEFT PANEL</span>
+            <button onclick="saveFile()"
+                style="text-align: center; background: #003300; border-color: #00ff00; font-weight: bold; padding: 8px 20px;">
+                Save</button>
+        </div>
+        <textarea id="editor" spellcheck="false"
+            placeholder="/* raw byte-stream inspector */&#10;paste config payload here. save triggers physical atomic overwrite..."></textarea>
+        <div id="status-bar">STANDBY.</div>
+    </div>
+
+    <div class="sidebar-right">
+        <div class="section">
+            <h3>PROBE RADAR</h3>
+            <div id="live-status" style="font-size: 12px; color: #888; line-height: 1.8; padding-bottom: 20px;">
+                [probe] establishing physical link...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTarget = "";
+        const editor = document.getElementById("editor");
+        const statusLog = document.getElementById("status-bar");
+        const label = document.getElementById("current-file");
+
+        function log(msg, isErr = false) {
+            statusLog.style.background = isErr ? "#330000" : "#002200";
+            statusLog.style.borderColor = isErr ? "#ff0000" : "#005500";
+            statusLog.innerText = "[" + new Date().toLocaleTimeString() + "] " + msg;
+        }
+
+        async function req(url, method, body = null) {
+            log("[dispatch] " + url + "...");
+            try {
+                const res = await fetch(url, { method: method, body: body });
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                log("[ack] " + url);
+            } catch (e) {
+                log("[err] " + e.message, true);
+            }
+        }
+
+        async function loadFile(target) {
+            log("[pull] " + target + "...");
+            try {
+                const res = await fetch("/api/file/read?target=" + target);
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                const text = await res.text();
+                editor.value = text;
+                currentTarget = target;
+                label.innerText = "[TARGET] " + target;
+                log("[ok] bytes: " + text.length);
+            } catch (e) {
+                log("[err] pull failed: " + e.message, true);
+            }
+        }
+
+        async function saveFile() {
+            if (!currentTarget) {
+                log("[err] no target selected. pull required.", true);
+                return;
+            }
+            let writeTarget = currentTarget;
+            if (currentTarget === "master_mod" || currentTarget === "caves_mod") {
+                if (confirm("WARNING: Dual-write to Master and Caves triggered. Confirm atomic overwrite?")) {
+                    writeTarget = "mod";
+                } else {
+                    return;
+                }
+            }
+
+            log("[write] atomic stream to: " + writeTarget + "...");
+            try {
+                const res = await fetch("/api/file/write?target=" + writeTarget, {
+                    method: "POST",
+                    body: editor.value
+                });
+                if (!res.ok) {
+                    const errTxt = await res.text();
+                    throw new Error("HTTP " + res.status + " - " + errTxt);
+                }
+                log("[ok] atomic write committed");
+            } catch (e) {
+                log("[err] commit failed: " + e.message, true);
+            }
+        }
+
+        const 季节字典 = ["Autumn (秋)", "Winter (冬)", "Spring (春)", "Summer (夏)"];
+        const 昼夜字典 = ["Day (白天)", "Dusk (黄昏)", "Night (夜晚)"];
+        const 暴动字典 = ["None (无)", "Calm (平静)", "Warn (警告)", "Wild (暴动)", "Dawn (黎明)"];
+
+        const 探针接收器 = new EventSource("/api/events");
+
+        探针接收器.onmessage = (事件) => {
+            try {
+                const 报文 = JSON.parse(事件.data);
+
+                const 数据 = 报文.data || {};
+                const 锁 = 报文.locks || {};
+                const 性能 = 报文.performance || {};
+
+                const isLoaded = 数据.cycles !== undefined && 数据.cycles < 2097151;
+
+                const 在线 = isLoaded ? 数据.players : "-";
+                const 天数 = isLoaded ? 数据.cycles : "-";
+                const 季节 = isLoaded ? (季节字典[数据.season] || "Unknown") : "-";
+                const 阶段 = isLoaded ? (昼夜字典[数据.phase] || "Unknown") : "-";
+                const 温度 = isLoaded ? 数据.temp : "-";
+                const 降水 = !isLoaded ? "-" : (数据.is_raining ? "Raining (下雨)" : (数据.is_snowing ? "Snowing (下雪)" : "Clear (晴朗)"));
+                const 月相 = isLoaded ? 数据.moon_phase : "-";
+                const 暴动 = isLoaded ? (暴动字典[数据.nightmare] || "Unknown") : "-";
+                const 天体 = !isLoaded ? "-" : (数据.alter_awake ? "<span style='color:#ff0000; font-weight:bold;'>Awake (已唤醒)</span>" : "Asleep (沉睡)");
+                const 换季 = isLoaded ? (数据.rem_days ?? "-") : "-";
+
+                const formatBoss = (val) => {
+                    if (!isLoaded || val === undefined || val > 2097151) return "-";
+                    if (val === 127) return "<span style='color:#555'>Dormant (未活跃)</span>";
+                    if (val === 0) return "<span style='color:#ff0000; font-weight:bold;'>READY (已就绪/现身)</span>";
+                    return "<span style='color:#ffaa00'>" + val + "</span> Days";
+                };
+
+                const bosses = 数据.boss_timers || {};
+
+                const 游戏更新 = 锁.game_upd ? "<span style='color:#ff0000; font-weight:bold; background:#330000; padding:2px;'>[UPDATING]</span>" : "Idle (空闲)";
+                const 模组更新 = 锁.mod_upd ? "<span style='color:#ff0000; font-weight:bold; background:#330000; padding:2px;'>[UPDATING]</span>" : "Idle (空闲)";
+                const 主世界态 = 数据.enable_master ? (锁.master_rdy ? "<span style='color:#00ff00'>Online (就绪)</span>" : "<span style='color:#ffaa00'>Offline/Loading (离线/加载)</span>") : "<span style='color:#555'>Disabled (禁用)</span>";
+                const 洞穴状态 = 数据.enable_caves ? (锁.caves_rdy ? "<span style='color:#00ff00'>Online (就绪)</span>" : "<span style='color:#ffaa00'>Offline/Loading (离线/加载)</span>") : "<span style='color:#555'>Disabled (禁用)</span>";
+
+                const 毫秒周期基准 = 性能.baseline_cycles !== undefined ? 性能.baseline_cycles : "-";
+                const 震荡周期数 = 性能.current_cycles !== undefined ? 性能.current_cycles : "-";
+
+                let 膨胀显示 = "<span style='color:#555'>- ms</span>";
+                if (毫秒周期基准 !== "-" && 震荡周期数 !== "-" && 毫秒周期基准 > 0) {
+                    let 延迟毫秒 = 震荡周期数 / 毫秒周期基准;
+
+                    let 格式化延迟 = 延迟毫秒.toFixed(4) + " ms";
+
+                    if (延迟毫秒 >= 5.0) {
+                        膨胀显示 = "<span style='color:#ff0000; font-weight:bold;'>" + 格式化延迟 + " [SEVERE]</span>";
+                    } else if (延迟毫秒 >= 1.0) {
+                        膨胀显示 = "<span style='color:#ffaa00'>" + 格式化延迟 + " [WARNING]</span>";
+                    } else {
+                        膨胀显示 = "<span style='color:#00ff00'>" + 格式化延迟 + " [HEALTHY]</span>";
+                    }
+                }
+
+                document.getElementById("live-status").innerHTML =
+                    "<span style='color:#00ff00; font-weight:bold;'>● LINK ACTIVE</span><br><br>" +
+
+                    "<span style='color:#555'>-- HOST PERFORMANCE (宿主机性能) --</span><br>" +
+                    "Jitter Bloat: <b>" + 膨胀显示 + "</b><br><br>" +
+
+                    "<span style='color:#555'>-- SYSTEM LOCKS (引擎原子锁) --</span><br>" +
+                    "Master (主世界): <b>" + 主世界态 + "</b><br>" +
+                    "Caves  (洞穴服): <b>" + 洞穴状态 + "</b><br>" +
+                    "Engine (游戏更新): <b>" + 游戏更新 + "</b><br>" +
+                    "Mods   (模组更新): <b>" + 模组更新 + "</b><br><br>" +
+
+                    "<span style='color:#555'>-- WORLD SNAPSHOT (世界快照) --</span><br>" +
+                    "Players (在线玩家): <b style='color:#fff'>" + 在线 + "</b><br>" +
+                    "Cycles  (世界天数): <b style='color:#fff'>Day " + 天数 + "</b> (Next season in <span style='color:#ffaa00'>" + 换季 + "</span> d)<br>" +
+                    "Season  (当前季节): <b style='color:#fff'>" + 季节 + "</b><br>" +
+                    "Phase   (昼夜阶段): <b style='color:#fff'>" + 阶段 + "</b><br>" +
+                    "Temp    (绝对温度): <b style='color:#fff'>" + 温度 + " °C</b><br>" +
+                    "Weather (气象状态): <b style='color:#fff'>" + 降水 + "</b><br>" +
+                    "Moon    (当前月相): <b style='color:#fff'>" + 月相 + "</b><br>" +
+                    "Ruins   (遗迹暴动): <b style='color:#fff'>" + 暴动 + "</b><br>" +
+                    "Alter   (天体状态): <b>" + 天体 + "</b><br><br>" +
+
+                    "<span style='color:#555'>-- BOSS RADAR (巨兽雷达) --</span><br>" +
+                    "Deerclops   (巨鹿): <b>" + formatBoss(bosses.deerclops) + "</b><br>" +
+                    "Bearger     (熊大): <b>" + formatBoss(bosses.bearger) + "</b><br>" +
+                    "Moose       (大鹅): <b>" + formatBoss(bosses.moose) + "</b><br>" +
+                    "Dragonfly   (龙蝇): <b>" + formatBoss(bosses.dragonfly) + "</b><br>" +
+                    "Bee Queen   (蜂后): <b>" + formatBoss(bosses.beequeen) + "</b><br>" +
+                    "Klaus     (克劳斯): <b>" + formatBoss(bosses.klaus) + "</b><br>" +
+                    "Toadstool   (蛤蟆): <b>" + formatBoss(bosses.toadstool) + "</b><br>" +
+                    "Fuelweaver(织影者): <b>" + formatBoss(bosses.fuelweaver) + "</b><br>" +
+                    "Malbatross(邪天翁): <b>" + formatBoss(bosses.malbatross) + "</b><br>" +
+                    "Fruit Fly (果蝇王): <b>" + formatBoss(bosses.lordfruitfly) + "</b><br>" +
+                    "Antlion (蚁狮地震): <b>" + (bosses.antlion === 127 || bosses.antlion === 0 || !isLoaded ? formatBoss(bosses.antlion) : ("<span style='color:#ffaa00'>" + bosses.antlion + "</span> Mins")) + "</b>";
+            } catch (e) {
+                console.error("Probe parse error:", e);
+            }
+        };
+
+        探针接收器.onerror = () => {
+            document.getElementById("live-status").innerHTML =
+                "<span style='color:#cc0000; font-weight:bold; background:#220000; padding:2px;'>[X] PHYSICAL LINK SEVERED. RECONNECTING...</span>";
+        };
+    </script>
+</body>
+
+</html>
