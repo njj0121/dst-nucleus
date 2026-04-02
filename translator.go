@@ -41,7 +41,6 @@ var dict = map[string]string{
 	"steamcmd默认路径":        "SteamCmdDefPath",
 	"acf文件目录":             "AcfDir",
 	"home目录":              "HomeDir",
-	"linux页面大小_MB":        "LinuxPageSizeMB",
 	"ps脚本":                "PsScript",
 	"zip读取器":              "ZipReader",
 	"作业信息类_扩展限制":          "JobObjectExtLimit",

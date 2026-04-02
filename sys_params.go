@@ -82,8 +82,8 @@ type 系统配置 struct {
 	/////////////////////////////////////////
 	日志状态 struct {
 		主世界输出   atomic.Bool `yaml:"master_log"`
-		洞穴输出    atomic.Bool `yaml:"caves_log"`
 		主世界日志路径 string      `yaml:"master_log_file"`
+		洞穴输出    atomic.Bool `yaml:"caves_log"`
 		洞穴日志路径  string      `yaml:"caves_log_file"`
 	}
 	_ [64]byte

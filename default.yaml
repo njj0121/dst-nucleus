@@ -55,7 +55,7 @@ http_api_listen: "127.0.0.1:20888"
 
 # Server announcement language. 
 # Note: This only affects in-game chat. Console logs remain unaffected.
-# Supported values: zh (简体中文), zh-t (繁體中文), en (English), jp (日本語).
+# Supported values: zh (简体中文), zh-t (繁體中文), en (English), jp (日本語), ru (Русский).
 # Defaults to zh if left blank or unrecognized.
 announcement_language: en
 
