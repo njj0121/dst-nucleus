@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -13,8 +13,10 @@ import (
 var 动作总线 = make(chan 核心执行动作, 1)
 var 全局生命周期 context.Context
 var 全局生命周期终结 context.CancelFunc
-var 全局局部生命周期修改互斥锁 sync.Mutex
-var 全局局部生命周期终结 context.CancelFunc
+
+type CancelFunc context.CancelFunc
+
+var 全局局部生命周期终结 atomic.Pointer[CancelFunc]
 
 type 核心执行动作 uint8
 
@@ -158,9 +160,8 @@ func main() {
 
 		生命周期, 终止生命周期 := context.WithCancel(全局生命周期)
 
-		全局局部生命周期修改互斥锁.Lock()
-		全局局部生命周期终结 = 终止生命周期
-		全局局部生命周期修改互斥锁.Unlock()
+		终止函数 := CancelFunc(终止生命周期)
+		全局局部生命周期终结.Store(&终止函数)
 
 		select {
 		case <-动作总线:

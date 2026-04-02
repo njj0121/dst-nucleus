@@ -104,7 +104,6 @@ var dict = map[string]string{
 	"全局行缓存":               "GlobalLineCache",
 	"全局远程模组时间表":           "RemoteModEpochs",
 	"全局远程模组缓存锁":           "RemoteModCacheLock",
-	"全局局部生命周期修改互斥锁":       "EpochMutationLock",
 	"全局局部生命周期终结":          "EpochKillSwitch",
 	"全局生命周期":              "GlobalCtx",
 	"全局生命周期终结":            "GlobalKillSwitch",
@@ -610,6 +609,8 @@ var dict = map[string]string{
 	"当前周期":           "CurrentCycle",
 	"洞穴命令前缀":         "cavesCommandPrefix",
 	"洞穴命令前缀长度":       "cavesCommandPrefixLen",
+	"终止函数":           "SeverancePayload",
+	"旧指针":            "StaleArtifact",
 }
 
 func main() {

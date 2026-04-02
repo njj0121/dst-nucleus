@@ -395,12 +395,10 @@ func api_stop(w http.ResponseWriter, r *http.Request) {
 	default:
 	}
 
-	全局局部生命周期修改互斥锁.Lock()
-	if 全局局部生命周期终结 != nil {
-		全局局部生命周期终结()
-		全局局部生命周期终结 = nil
+	旧指针 := 全局局部生命周期终结.Load()
+	if 旧指针 != nil && 全局局部生命周期终结.CompareAndSwap(旧指针, nil) {
+		(*旧指针)()
 	}
-	全局局部生命周期修改互斥锁.Unlock()
 
 	w.Header()["Content-Type"] = json头
 	w.Write(S2B(`{"status": "success"}`))
@@ -418,12 +416,10 @@ func api_restart(w http.ResponseWriter, r *http.Request) {
 	default:
 	}
 
-	全局局部生命周期修改互斥锁.Lock()
-	if 全局局部生命周期终结 != nil {
-		全局局部生命周期终结()
-		全局局部生命周期终结 = nil
+	旧指针 := 全局局部生命周期终结.Load()
+	if 旧指针 != nil && 全局局部生命周期终结.CompareAndSwap(旧指针, nil) {
+		(*旧指针)()
 	}
-	全局局部生命周期修改互斥锁.Unlock()
 
 	select {
 	case API唤醒通道 <- struct{}{}:
