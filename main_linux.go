@@ -28,8 +28,6 @@ const steamcmd文件名 = "steamcmd.sh"
 var steamcmd默认路径 = filepath.Join(os.Getenv("HOME"), "Steam")
 
 var (
-	linux页面大小_MB = float64(syscall.Getpagesize()) / (1024.0 * 1024.0)
-
 	探针缓冲池 = sync.Pool{
 		New: func() any {
 			b := make([]byte, 1024)
