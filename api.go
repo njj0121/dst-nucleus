@@ -130,7 +130,7 @@ func api_status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	报文指针 := 极速状态报文缓存.Load()
+	报文指针 := 当前状态快照.Load()
 	if 报文指针 == nil {
 		w.Write(S2B(`{"status":"loading", "message":"probe warming up"}`))
 		return
@@ -171,7 +171,7 @@ func api_events(w http.ResponseWriter, r *http.Request) {
 		case <-客户端拔管:
 			return
 		case <-客户端推送通道:
-			全局报文指针 := 极速状态报文缓存.Load()
+			全局报文指针 := 当前状态快照.Load()
 			if 全局报文指针 == nil {
 				continue
 			}
@@ -267,12 +267,27 @@ func api_command(w http.ResponseWriter, r *http.Request) {
 	池化指针 := 接收缓冲池.Get().(*[]byte)
 	临时缓冲 := *池化指针
 
+	defer func() {
+		clear(临时缓冲)
+		接收缓冲池.Put(池化指针)
+	}()
+
 	读取总数 := 0
 	for {
+		if 读取总数 == len(临时缓冲) {
+			http报错(w, 413, S2B(`{"status":"error", "message":"payload too large"}`))
+			return
+		}
+
 		n, err := r.Body.Read(临时缓冲[读取总数:])
 		读取总数 += n
+
 		if err != nil {
-			break
+			if err == io.EOF {
+				break
+			}
+			http报错(w, 400, S2B(`{"status":"error", "message":"bad request or payload too large"}`))
+			return
 		}
 	}
 
@@ -557,11 +572,20 @@ func api_update_state(w http.ResponseWriter, r *http.Request) {
 	}
 
 	池化指针 := 接收缓冲池.Get().(*[]byte)
-	defer 接收缓冲池.Put(池化指针)
 	临时缓冲 := *池化指针
+
+	defer func() {
+		clear(临时缓冲)
+		接收缓冲池.Put(池化指针)
+	}()
 
 	读取总数 := 0
 	for {
+		if 读取总数 == len(临时缓冲) {
+			http报错(w, 413, S2B(`{"status":"error", "message":"Payload Too Large"}`))
+			return
+		}
+
 		n, err := r.Body.Read(临时缓冲[读取总数:])
 		读取总数 += n
 		if err != nil {

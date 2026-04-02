@@ -393,7 +393,6 @@ var dict = map[string]string{
 	"最终更新名单":         "FinalUpdateList",
 	"最终长度":           "FinalLen",
 	"极速二进制协议头":       "RawProtoMagic",
-	"极速状态报文缓存":       "SonicPktCache",
 	"极速网关":           "SonicGateway",
 	"模拟主体":           "MockBody",
 	"模拟方法":           "MockMethod",

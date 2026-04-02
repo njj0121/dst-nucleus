@@ -22,8 +22,6 @@ var (
 	当前状态快照 atomic.Pointer[[]byte]
 )
 
-var 极速状态报文缓存 atomic.Pointer[[]byte]
-
 func init() {
 	for i := 0; i < 环形缓冲深度; i++ {
 		起始物理偏移 := i * 单槽位容量
@@ -138,7 +136,7 @@ func 刷新服务器状态() {
 	状态环形阵列[当前槽位] = buf
 	目标指针 := &状态环形阵列[当前槽位]
 
-	极速状态报文缓存.Store(目标指针)
+	当前状态快照.Store(目标指针)
 
 	sse观察者矩阵.Range(func(key, value any) bool {
 		select {
