@@ -109,7 +109,7 @@ func 启动本地api接口() {
 	}
 }
 
-//go:embed index.html
+//go:embed ui.html
 var 面板HTML []byte
 
 func api_ui(w http.ResponseWriter, r *http.Request) {
