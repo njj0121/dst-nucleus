@@ -63,7 +63,7 @@ func 发送纯文本指令(指令字符串 string, 命令目标 目标服) {
 
 var wg sync.WaitGroup
 
-func 运行主世界(生命周期 context.Context, 终止生命周期 context.CancelFunc, 程序路径 string) {
+func 运行主世界(生命周期 context.Context, 终止生命周期 context.CancelFunc) {
 	defer wg.Done()
 	defer 终止生命周期()
 	defer 全局配置.进程状态.主世界当前世代.Store(0)
@@ -75,7 +75,7 @@ func 运行主世界(生命周期 context.Context, 终止生命周期 context.Ca
 
 	饥荒世界生命周期, 终止饥荒世界生命周期 := context.WithCancel(context.Background())
 	defer 终止饥荒世界生命周期()
-	主世界进程 := exec.CommandContext(饥荒世界生命周期, 程序路径, append(全局配置.配置区1.通用启动参数, "-shard", "Master")...)
+	主世界进程 := exec.CommandContext(饥荒世界生命周期, 游戏程序路径, append(全局配置.配置区1.通用启动参数, "-shard", "Master")...)
 	主世界进程.Dir = 全局配置.配置区1.游戏程序目录
 	绑定子进程生命周期(主世界进程)
 
@@ -159,7 +159,7 @@ func 运行主世界(生命周期 context.Context, 终止生命周期 context.Ca
 	}
 }
 
-func 运行洞穴(生命周期 context.Context, 终止生命周期 context.CancelFunc, 程序路径 string) {
+func 运行洞穴(生命周期 context.Context, 终止生命周期 context.CancelFunc) {
 	defer wg.Done()
 	defer 终止生命周期()
 	defer 全局配置.进程状态.洞穴当前世代.Store(0)
@@ -173,7 +173,7 @@ func 运行洞穴(生命周期 context.Context, 终止生命周期 context.Cance
 
 	饥荒世界生命周期, 终止饥荒世界生命周期 := context.WithCancel(context.Background())
 	defer 终止饥荒世界生命周期()
-	洞穴进程 := exec.CommandContext(饥荒世界生命周期, 程序路径, append(全局配置.配置区1.通用启动参数, "-shard", "Caves")...)
+	洞穴进程 := exec.CommandContext(饥荒世界生命周期, 游戏程序路径, append(全局配置.配置区1.通用启动参数, "-shard", "Caves")...)
 	洞穴进程.Dir = 全局配置.配置区1.游戏程序目录
 	绑定子进程生命周期(洞穴进程)
 

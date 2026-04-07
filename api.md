@@ -259,7 +259,7 @@ HTTP 413 Payload Too Large: The Core enforces a strict 1MB (`1024*1024` bytes) h
 Graceful Missing File Handling: If the target file does not exist on the disk (e.g., a newly created server without overrides), the API does not error out. It returns a `HTTP 200 OK` with an empty plain text body (""), representing an empty configuration state.
 
 ### 6.2.1 /api/file/write (Anti-Corruption Stream Write)
-This endpoint securely overwrites the specified configuration file. It does not buffer the payload into memory. Instead, it streams the raw incoming HTTP body directly to the physical disk.
+This endpoint safely and atomically overwrites the specified configuration file. Rather than loading the entire payload into memory, it utilizes a pre-allocated memory pool to stream the incoming HTTP body with zero heap allocation. To guarantee data integrity and prevent file corruption, the stream is first written to a temporary file, strictly flushed to the physical disk (`fsync`), and finally atomically renamed to the target path.
 
 * Method: `POST`
 

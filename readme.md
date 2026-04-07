@@ -41,7 +41,7 @@ A zero-dependency Don't Starve Together server core.
 * Start, stop, and restart servers—delivering a `systemctl`-like bare-metal experience.
 * Read and write configuration files with 1:1 raw transmission. What you see is what you get. Paste your configs directly and write them; the API makes zero attempts to mutate your data.
 * Includes a minimalist UI covering essential functions: reading/writing configs, toggling server states, and monitoring game status.
-* **Extremely lightweight execution:** Aside from a few heap allocations for memory safety, the vast majority of APIs achieve **zero-allocation** and **zero-copy**. File I/O completely bypasses application space: the engine instructs the OS to stream data directly from disk to the API caller, and incoming writes drop from the NIC (Network Interface Card) to memory and straight to disk via the OS, incurring 0 performance overhead in user space.
+* **Extremely lightweight execution:** Aside from a few heap allocations for memory safety, the vast majority of APIs achieve **zero-allocation** and **zero-copy**.
 
 ### In-Game State Probing
 * Operates entirely mod-free. Probing commands are injected parasitically into the DST process directly via the console. *(Note: This feature currently lacks extensive testing, has only passed basic checks, and data accuracy is not yet fully guaranteed).*

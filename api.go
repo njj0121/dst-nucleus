@@ -454,19 +454,19 @@ func api_file_read(w http.ResponseWriter, r *http.Request) {
 
 	switch 目标 {
 	case "cluster":
-		文件路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "cluster.ini")
+		文件路径 = cluster路径
 	case "master_server":
-		文件路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "server.ini")
+		文件路径 = 主世界server配置路径
 	case "caves_server":
-		文件路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "server.ini")
+		文件路径 = 洞穴server配置路径
 	case "master_world":
-		文件路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "worldgenoverride.lua")
+		文件路径 = 主世界world配置路径
 	case "caves_world":
-		文件路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "worldgenoverride.lua")
+		文件路径 = 洞穴world配置路径
 	case "master_mod":
-		文件路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "modoverrides.lua")
+		文件路径 = 主世界mod配置路径
 	case "caves_mod":
-		文件路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "modoverrides.lua")
+		文件路径 = 洞穴mod配置路径
 	case "setup":
 		文件路径 = 全局配置.配置区1.模组Lua更新文件目标路径
 	default:
@@ -512,55 +512,48 @@ func api_file_write(w http.ResponseWriter, r *http.Request) {
 	}
 
 	目标 := strings.ToLower(r.URL.Query().Get("target"))
-	var 目标写入路径 []string
+	var 目标写入路径 [2]string
 
 	switch 目标 {
 	case "cluster":
-		目标写入路径 = append(目标写入路径, filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "cluster.ini"))
+		目标写入路径[0] = cluster路径
 	case "master_server":
-		目标写入路径 = append(目标写入路径, filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "server.ini"))
+		目标写入路径[0] = 主世界server配置路径
 	case "caves_server":
-		目标写入路径 = append(目标写入路径, filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "server.ini"))
+		目标写入路径[0] = 洞穴server配置路径
 	case "master_world":
-		目标写入路径 = append(目标写入路径, filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "worldgenoverride.lua"))
+		目标写入路径[0] = 主世界world配置路径
 	case "caves_world":
-		目标写入路径 = append(目标写入路径, filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "worldgenoverride.lua"))
+		目标写入路径[0] = 洞穴world配置路径
 
 	case "mod":
-		if 全局配置.配置区2.启用主世界.Load() {
-			目标写入路径 = append(目标写入路径, filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "modoverrides.lua"))
-		}
-		if 全局配置.配置区2.启用洞穴.Load() {
-			目标写入路径 = append(目标写入路径, filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "modoverrides.lua"))
-		}
+		目标写入路径 = 写入mod配置文件路径集
 	case "setup":
-		目标写入路径 = append(目标写入路径, 全局配置.配置区1.模组Lua更新文件目标路径)
+		目标写入路径[0] = 全局配置.配置区1.模组Lua更新文件目标路径
 
 	default:
 		http报错(w, 400, []byte(`{"status":"error", "message":"invalid target"}`))
 		return
 	}
 
-	if len(目标写入路径) == 0 {
-		http报错(w, 400, []byte(`{"status":"error", "message":"no active shard configured on this node"}`))
+	if 目标写入路径[0] == "" {
+		http报错(w, 400, []byte(`{"status":"error", "message":"unconfigured target"}`))
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
 
 	if err := 原子写文件流(目标写入路径[0], r.Body); err != 0 {
-		控制台合并输出换行(S2B("致命异常: 流式落盘失败 "), S2B(filepath.Base(目标写入路径[0])), (S2B(" ")))
+		控制台合并输出换行(S2B("[sys] write failed "), S2B(目标写入路径[0]))
 		http报错(w, 500, []byte(`{"status":"error", "message":"primary write failed"}`))
 		return
 	}
 
-	if len(目标写入路径) > 1 {
-		for i := 1; i < len(目标写入路径); i++ {
-			if _, err := 复制文件(目标写入路径[0], 目标写入路径[i]); err != 0 {
-				控制台合并输出换行(S2B("[sys] clone failed "), S2B(filepath.Base(目标写入路径[i])))
-				http报错(w, 500, []byte(`{"status":"error", "message":"clone to secondary failed"}`))
-				return
-			}
+	if 目标写入路径[1] != "" {
+		if _, err := 复制文件(目标写入路径[0], 目标写入路径[1]); err != 0 {
+			控制台合并输出换行(S2B("[sys] clone failed "), S2B(目标写入路径[1]))
+			http报错(w, 500, []byte(`{"status":"error", "message":"clone to secondary failed"}`))
+			return
 		}
 	}
 
@@ -870,6 +863,13 @@ func http报错(w http.ResponseWriter, 状态码 int, 响应体 []byte) {
 	w.Write(响应体)
 }
 
+var 原子写文件流缓冲池 = sync.Pool{
+	New: func() any {
+		b := make([]byte, 32*1024)
+		return &b
+	},
+}
+
 func 原子写文件流(目标路径 string, 源流 io.Reader) uint8 {
 	目标目录 := filepath.Dir(目标路径)
 	os.MkdirAll(目标目录, 0755)
@@ -883,7 +883,12 @@ func 原子写文件流(目标路径 string, 源流 io.Reader) uint8 {
 
 	defer os.Remove(临时路径)
 
-	_, err = io.Copy(临时文件, 源流)
+	缓冲指针 := 原子写文件流缓冲池.Get().(*[]byte)
+
+	_, err = io.CopyBuffer(临时文件, 源流, *缓冲指针)
+
+	原子写文件流缓冲池.Put(缓冲指针)
+
 	if err != nil {
 		临时文件.Close()
 		控制台合并输出换行(S2B("[sys] stream copy interrupted: "), E2B(err))

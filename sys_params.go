@@ -126,6 +126,23 @@ type 系统配置 struct {
 	/////////////////////////////////////////
 }
 
+var (
+	主世界mod配置路径    string
+	洞穴mod配置路径     string
+	cluster路径     string
+	主世界server配置路径 string
+	洞穴server配置路径  string
+	主世界world配置路径  string
+	洞穴world配置路径   string
+	游戏版本acf文件路径   string
+	mod版本acf文件路径  string
+	steamcmd程序路径  string
+	游戏程序路径        string
+
+	mod更新配置文件路径集 [3]string
+	写入mod配置文件路径集 [2]string
+)
+
 func 初始化核心中枢(s *系统配置) {
 	s.配置区1.存档名称 = "MyDediServer"
 	s.配置区1.SteamCmd路径 = steamcmd默认路径
