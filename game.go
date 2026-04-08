@@ -119,8 +119,6 @@ func 运行主世界(生命周期 context.Context, 终止生命周期 context.Ca
 		全局配置.原子锁.主世界就绪原子锁.Store(false)
 	}()
 
-	debug.FreeOSMemory()
-
 	go func() {
 		清洗命令通道(主世界命令通道)
 		全局配置.原子锁.主世界接收器存活.Store(true)
@@ -145,6 +143,7 @@ func 运行主世界(生命周期 context.Context, 终止生命周期 context.Ca
 		退出通道 <- 主世界进程.Wait()
 		close(进程结束信号)
 	}()
+	debug.FreeOSMemory()
 	select {
 	case <-生命周期.Done():
 		控制台合并输出换行(S2B("[sys] master execution aborted by context cancel"))
@@ -216,8 +215,6 @@ func 运行洞穴(生命周期 context.Context, 终止生命周期 context.Cance
 		全局配置.原子锁.洞穴就绪原子锁.Store(false)
 	}()
 
-	debug.FreeOSMemory()
-
 	go func() {
 		清洗命令通道(洞穴命令通道)
 		全局配置.原子锁.洞穴接收器存活.Store(true)
@@ -232,10 +229,8 @@ func 运行洞穴(生命周期 context.Context, 终止生命周期 context.Cance
 				if 底层管道, 强转成功 := 洞穴输入.(interface{ SetWriteDeadline(time.Time) error }); 强转成功 {
 					底层管道.SetWriteDeadline(time.Now().Add(50 * time.Millisecond))
 				}
-
 				洞穴输入.Write(命令)
 			}
-
 		}
 	}()
 
@@ -244,6 +239,7 @@ func 运行洞穴(生命周期 context.Context, 终止生命周期 context.Cance
 		退出通道 <- 洞穴进程.Wait()
 		close(进程结束信号)
 	}()
+	debug.FreeOSMemory()
 	select {
 	case <-生命周期.Done():
 		控制台合并输出换行(S2B("[sys] caves execution aborted by context cancel"))

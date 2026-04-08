@@ -818,9 +818,24 @@ func 解析Modoverrides(内容 []byte, 结果 *[]uint64, 排重字典 map[uint64
 	}
 }
 
+var 模组字典池 = sync.Pool{
+	New: func() any {
+		return make(map[uint64]struct{}, 64)
+	},
+}
+
+func 归还模组字典池(池 *sync.Pool, m map[uint64]struct{}) {
+	clear(m)
+	池.Put(m)
+}
+
 func 读取行() ([]uint64, uint8) {
-	排重字典 := make(map[uint64]struct{}, 64)
-	setup独有字典 := make(map[uint64]struct{}, 64)
+	排重字典 := 模组字典池.Get().(map[uint64]struct{})
+	setup独有字典 := 模组字典池.Get().(map[uint64]struct{})
+
+	defer 归还模组字典池(&模组字典池, 排重字典)
+	defer 归还模组字典池(&模组字典池, setup独有字典)
+
 	var 结果 []uint64
 
 	for 文件索引, 路径 := range mod更新配置文件路径集 {

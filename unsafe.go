@@ -1,14 +1,8 @@
 package main
 
 import (
-	"sync"
 	"unsafe"
 )
-
-var 全局行缓存 = make([]byte, 0, 1024)
-
-// 单纯为了阻塞而阻塞，绝对不能写成异步输出，指令执行周期远小于IO调度周期，很容易乱序，对于排错有极大的障碍
-var 输出阻塞锁 sync.Mutex
 
 func S2B(s string) []byte {
 	if s == "" {

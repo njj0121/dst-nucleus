@@ -45,52 +45,51 @@ func init() {
 }
 
 var 控制台换行符 = []byte{'\n'}
-var 全局向量缓存 [64]syscall.Iovec
 
 func 控制台合并输出(碎片组 ...[]byte) {
-	输出阻塞锁.Lock()
-	defer 输出阻塞锁.Unlock()
+	var 本地向量 [64]syscall.Iovec
 
 	var 实际向量数 int
 	for _, 碎片 := range 碎片组 {
 		长度 := len(碎片)
-		if 长度 > 0 {
-			全局向量缓存[实际向量数].Base = &碎片[0]
-			全局向量缓存[实际向量数].SetLen(长度)
+		if 长度 > 0 && 实际向量数 < 64 {
+			本地向量[实际向量数].Base = &碎片[0]
+			本地向量[实际向量数].SetLen(长度)
 			实际向量数++
 		}
 	}
-	if 实际向量数 == 0 {
-		return
+
+	if 实际向量数 > 0 {
+		syscall.RawSyscall(
+			syscall.SYS_WRITEV,
+			uintptr(1),
+			uintptr(unsafe.Pointer(&本地向量[0])),
+			uintptr(实际向量数),
+		)
 	}
-	syscall.RawSyscall(
-		syscall.SYS_WRITEV,
-		uintptr(1),
-		uintptr(unsafe.Pointer(&全局向量缓存[0])),
-		uintptr(实际向量数),
-	)
 }
 
 func 控制台合并输出换行(碎片组 ...[]byte) {
-	输出阻塞锁.Lock()
-	defer 输出阻塞锁.Unlock()
+	var 本地向量 [64]syscall.Iovec
 
 	var 实际向量数 int
 	for _, 碎片 := range 碎片组 {
 		长度 := len(碎片)
-		if 长度 > 0 {
-			全局向量缓存[实际向量数].Base = &碎片[0]
-			全局向量缓存[实际向量数].SetLen(长度)
+		if 长度 > 0 && 实际向量数 < 63 {
+			本地向量[实际向量数].Base = &碎片[0]
+			本地向量[实际向量数].SetLen(长度)
 			实际向量数++
 		}
 	}
-	全局向量缓存[实际向量数].Base = &控制台换行符[0]
-	全局向量缓存[实际向量数].SetLen(len(控制台换行符))
+
+	本地向量[实际向量数].Base = &控制台换行符[0]
+	本地向量[实际向量数].SetLen(len(控制台换行符))
 	实际向量数++
+
 	syscall.RawSyscall(
 		syscall.SYS_WRITEV,
 		uintptr(1),
-		uintptr(unsafe.Pointer(&全局向量缓存[0])),
+		uintptr(unsafe.Pointer(&本地向量[0])),
 		uintptr(实际向量数),
 	)
 }

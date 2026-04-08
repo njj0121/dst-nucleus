@@ -72,60 +72,61 @@ func init() {
 }
 
 var 控制台换行符 = []byte{'\r', '\n'}
+var 输出缓冲池 = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 1024)
+		return &b
+	},
+}
 
 func 控制台合并输出(碎片组 ...[]byte) {
 	if 标准输出句柄 == 0 {
 		return
 	}
-	输出阻塞锁.Lock()
-	defer 输出阻塞锁.Unlock()
-	var 总长度 int
-	for _, 碎片 := range 碎片组 {
-		总长度 += len(碎片)
-	}
-	if cap(全局行缓存) < 总长度 {
-		全局行缓存 = make([]byte, 总长度, 总长度*2)
-	} else {
-		全局行缓存 = 全局行缓存[:总长度]
-	}
 
-	var 游标 int
+	池指针 := 输出缓冲池.Get().(*[]byte)
+	buf := (*池指针)[:0]
+
 	for _, 碎片 := range 碎片组 {
 		if len(碎片) > 0 {
-			游标 += copy(全局行缓存[游标:], 碎片)
+			buf = append(buf, 碎片...)
 		}
 	}
-	var 实际写入数量 uint32
-	syscall.WriteFile(标准输出句柄, 全局行缓存, &实际写入数量, nil)
+
+	if len(buf) > 0 {
+		var 实际写入数量 uint32
+		syscall.WriteFile(标准输出句柄, buf, &实际写入数量, nil)
+	}
+
+	if cap(buf) <= 64*1024 {
+		*池指针 = buf
+		输出缓冲池.Put(池指针)
+	}
 }
 
 func 控制台合并输出换行(碎片组 ...[]byte) {
 	if 标准输出句柄 == 0 {
 		return
 	}
-	输出阻塞锁.Lock()
-	defer 输出阻塞锁.Unlock()
-	var 总长度 int
-	for _, 碎片 := range 碎片组 {
-		总长度 += len(碎片)
-	}
-	总长度 += len(控制台换行符)
 
-	if cap(全局行缓存) < 总长度 {
-		全局行缓存 = make([]byte, 总长度, 总长度*2)
-	} else {
-		全局行缓存 = 全局行缓存[:总长度]
-	}
+	池指针 := 输出缓冲池.Get().(*[]byte)
+	buf := (*池指针)[:0]
 
-	var 游标 int
 	for _, 碎片 := range 碎片组 {
 		if len(碎片) > 0 {
-			游标 += copy(全局行缓存[游标:], 碎片)
+			buf = append(buf, 碎片...)
 		}
 	}
-	copy(全局行缓存[游标:], 控制台换行符)
+
+	buf = append(buf, 控制台换行符...)
+
 	var 实际写入数量 uint32
-	syscall.WriteFile(标准输出句柄, 全局行缓存, &实际写入数量, nil)
+	syscall.WriteFile(标准输出句柄, buf, &实际写入数量, nil)
+
+	if cap(buf) <= 64*1024 {
+		*池指针 = buf
+		输出缓冲池.Put(池指针)
+	}
 }
 
 var SteamCMD下载缓冲池 = sync.Pool{

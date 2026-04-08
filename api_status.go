@@ -5,7 +5,9 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const 环形缓冲深度 = 32
@@ -147,6 +149,20 @@ func 刷新服务器状态() {
 	})
 }
 
+type 发包载体 struct {
+	缓冲  []byte
+	读取器 *bytes.Reader
+}
+
+var 发包载体池 = sync.Pool{
+	New: func() any {
+		return &发包载体{
+			缓冲:  make([]byte, 0, 64),
+			读取器: bytes.NewReader(nil),
+		}
+	},
+}
+
 func 解析二进制包(载荷 []byte) {
 	if len(载荷) == 0 {
 		return
@@ -265,33 +281,49 @@ func 解析二进制包(载荷 []byte) {
 		if !全局配置.配置区2.启用主世界.Load() {
 			url := 全局配置.配置区2.洞穴状态上报端点
 
-			go func(toad, fw uint32, targetURL string) {
-				if targetURL == "" {
-					return
-				}
-
-				var 栈缓冲 [64]byte
-				载荷 := 栈缓冲[:0]
-
-				载荷 = append(载荷, "toadstool="...)
-				载荷 = strconv.AppendUint(载荷, uint64(toad), 10)
-				载荷 = append(载荷, "&fuelweaver="...)
-				载荷 = strconv.AppendUint(载荷, uint64(fw), 10)
-
-				req, err := http.NewRequest("POST", targetURL, bytes.NewReader(载荷))
-				if err != nil {
-					return
-				}
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-				resp, err := http.DefaultClient.Do(req)
-				if err == nil {
-					io.Copy(io.Discard, resp.Body)
-					resp.Body.Close()
-				}
-			}(蛤蟆, 织影者, url)
+			go 发送洞穴参数(蛤蟆, 织影者, url)
 		}
 	default:
 		return
+	}
+}
+
+var 防超时客户端 = &http.Client{
+	Timeout: 2 * time.Second,
+}
+
+func 发送洞穴参数(toad, fw uint32, targetURL string) {
+	if targetURL == "" {
+		return
+	}
+
+	载体 := 发包载体池.Get().(*发包载体)
+	defer 发包载体池.Put(载体)
+	载荷 := 载体.缓冲[:0]
+
+	载荷 = append(载荷, "toadstool="...)
+	载荷 = strconv.AppendUint(载荷, uint64(toad), 10)
+	载荷 = append(载荷, "&fuelweaver="...)
+	载荷 = strconv.AppendUint(载荷, uint64(fw), 10)
+
+	载体.缓冲 = 载荷
+
+	载体.读取器.Reset(载荷)
+
+	req, err := http.NewRequest("POST", targetURL, 载体.读取器)
+	if err != nil {
+		发包载体池.Put(载体)
+		return
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := 防超时客户端.Do(req)
+	if err != nil {
+		return
+	}
+
+	if resp != nil && resp.Body != nil {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
 	}
 }

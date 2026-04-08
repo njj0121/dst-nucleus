@@ -35,14 +35,7 @@ func main() {
 	全局生命周期, 全局生命周期终结 = context.WithCancel(context.Background())
 	defer 全局生命周期终结()
 
-	go func() {
-		信号通道 := make(chan os.Signal, 1)
-		signal.Notify(信号通道, os.Interrupt, syscall.SIGTERM)
-
-		<-信号通道
-
-		全局生命周期终结()
-	}()
+	go 看门狗()
 
 	初始化核心中枢(全局配置)
 	初始化游戏内状态()
@@ -246,6 +239,15 @@ func main() {
 			return
 		}
 	}
+}
+
+func 看门狗() {
+	信号通道 := make(chan os.Signal, 1)
+	signal.Notify(信号通道, os.Interrupt, syscall.SIGTERM)
+
+	<-信号通道
+
+	全局生命周期终结()
 }
 
 func 监听控制台输入() {
