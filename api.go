@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"io"
@@ -77,6 +78,8 @@ func (极速网关) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		api_log_master(w, r)
 	case "/api/log/caves":
 		api_log_caves(w, r)
+	case "/api/checkupdate":
+		api_checkupdate(w, r)
 	default:
 		w.WriteHeader(404)
 		w.Write(S2B("404 page not found\n"))
@@ -132,7 +135,7 @@ func api_ui(w http.ResponseWriter, r *http.Request) {
 
 var sse1 = []byte("data: ")
 var sse2 = []byte("\n\n")
-var poet405 = []byte(`{"status":"error", "message":"method not allowed (POST required)"}`)
+var post405 = []byte(`{"status":"error", "message":"method not allowed (POST required)"}`)
 var get400 = []byte(`{"status":"error", "message":"method not allowed (GET required)"}`)
 var success200 = []byte(`{"status": "success"}`)
 var error4xx = []byte(`{"status":"error"}`)
@@ -279,7 +282,7 @@ func api_command(w http.ResponseWriter, r *http.Request) {
 	defer 命令api原子锁.锁定状态.Store(0)
 
 	if r.Method != "POST" {
-		http报错(w, 405, poet405)
+		http报错(w, 405, post405)
 		return
 	}
 
@@ -393,16 +396,18 @@ func api_command(w http.ResponseWriter, r *http.Request) {
 	w.Write(success200)
 }
 
+var api_start409 = []byte(`{"status":"error", "message":"start blocked"}`)
+
 func api_start(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http报错(w, 405, poet405)
+		http报错(w, 405, post405)
 		return
 	}
 	select {
 	case API唤醒通道 <- struct{}{}:
 		全局配置.原子锁.允许服务器运行原子锁.Store(true)
 	default:
-		http报错(w, 409, S2B(`{"status":"error", "message":"start blocked"}`))
+		http报错(w, 409, api_start409)
 		return
 	}
 	w.Header()["Content-Type"] = json头
@@ -411,7 +416,7 @@ func api_start(w http.ResponseWriter, r *http.Request) {
 
 func api_stop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http报错(w, 405, poet405)
+		http报错(w, 405, post405)
 		return
 	}
 	全局配置.原子锁.允许服务器运行原子锁.Store(false)
@@ -432,7 +437,7 @@ func api_stop(w http.ResponseWriter, r *http.Request) {
 
 func api_restart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http报错(w, 405, poet405)
+		http报错(w, 405, post405)
 		return
 	}
 	全局配置.原子锁.允许服务器运行原子锁.Store(true)
@@ -456,7 +461,12 @@ func api_restart(w http.ResponseWriter, r *http.Request) {
 	w.Write(success200)
 }
 
+var api_file_readHeaderByte [32]byte
+var api_file_readHeader = make([]string, 1)
+var targetHeader = []byte("target=")
 var api_file_read400 = []byte(`{"status":"error", "message":"invalid target parameter"}`)
+var api_file_read413 = []byte(`{"status":"error", "message":"file > 1MB, stream rejected"}`)
+var api_file_readNone = []byte("")
 
 func api_file_read(w http.ResponseWriter, r *http.Request) {
 	if !文件读写原子锁.锁定状态.CompareAndSwap(0, 1) {
@@ -470,10 +480,45 @@ func api_file_read(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	目标 := strings.ToLower(r.URL.Query().Get("target"))
+	queryBytes := S2B(r.URL.RawQuery)
+
+	var 目标 []byte
+	剩余 := queryBytes
+
+	for len(剩余) > 0 {
+		var 当前块 []byte
+		块尾 := bytes.IndexByte(剩余, '&')
+		if 块尾 == -1 {
+			当前块 = 剩余
+			剩余 = nil
+		} else {
+			当前块 = 剩余[:块尾]
+			剩余 = 剩余[块尾+1:]
+		}
+
+		if bytes.HasPrefix(当前块, targetHeader) {
+			目标 = 当前块[len(targetHeader):]
+			break
+		}
+	}
+
+	if len(目标) == 0 || len(目标) > 32 {
+		http报错(w, 400, api_file_read400)
+		return
+	}
+
+	var 栈缓冲 [32]byte
+	长度 := copy(栈缓冲[:], 目标)
+
+	for i := 0; i < 长度; i++ {
+		if 栈缓冲[i] >= 'A' && 栈缓冲[i] <= 'Z' {
+			栈缓冲[i] += 'a' - 'A'
+		}
+	}
+
 	var 文件路径 string
 
-	switch 目标 {
+	switch string(栈缓冲[:长度]) {
 	case "cluster":
 		文件路径 = cluster路径
 	case "master_server":
@@ -497,21 +542,22 @@ func api_file_read(w http.ResponseWriter, r *http.Request) {
 
 	f, err := os.Open(文件路径)
 	if err != nil {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte(""))
+		w.Header()["Content-Type"] = plain头
+		w.Write(api_file_readNone)
 		return
 	}
 	defer f.Close()
-
+	w.Header()["Content-Type"] = plain头
 	if stat, err := f.Stat(); err == nil {
 		if stat.Size() > 1024*1024 {
-			http报错(w, 413, []byte(`{"status":"error", "message":"file > 1MB, stream rejected"}`))
+			http报错(w, 413, api_file_read413)
 			return
 		}
-		w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
-	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
+		api_file_readHeader[0] = B2S(strconv.AppendInt(api_file_readHeaderByte[:0], stat.Size(), 10))
+		w.Header()["Content-Length"] = api_file_readHeader
+	}
+	w.WriteHeader(http.StatusOK)
 	io.Copy(w, f)
 }
 
@@ -530,7 +576,7 @@ func api_file_write(w http.ResponseWriter, r *http.Request) {
 	defer 文件读写原子锁.锁定状态.Store(0)
 
 	if r.Method != "POST" {
-		http报错(w, 405, poet405)
+		http报错(w, 405, post405)
 		return
 	}
 
@@ -539,10 +585,44 @@ func api_file_write(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	目标 := strings.ToLower(r.URL.Query().Get("target"))
+	queryBytes := S2B(r.URL.RawQuery)
+
+	var 目标 []byte
+	剩余 := queryBytes
+
+	for len(剩余) > 0 {
+		var 当前块 []byte
+		块尾 := bytes.IndexByte(剩余, '&')
+		if 块尾 == -1 {
+			当前块 = 剩余
+			剩余 = nil
+		} else {
+			当前块 = 剩余[:块尾]
+			剩余 = 剩余[块尾+1:]
+		}
+
+		if bytes.HasPrefix(当前块, targetHeader) {
+			目标 = 当前块[len(targetHeader):]
+			break
+		}
+	}
+
+	if len(目标) == 0 || len(目标) > 32 {
+		http报错(w, 400, api_file_read400)
+		return
+	}
+
+	var 栈缓冲 [32]byte
+	长度 := copy(栈缓冲[:], 目标)
+
+	for i := 0; i < 长度; i++ {
+		if 栈缓冲[i] >= 'A' && 栈缓冲[i] <= 'Z' {
+			栈缓冲[i] += 'a' - 'A'
+		}
+	}
 	var 目标写入路径 [2]string
 
-	switch 目标 {
+	switch string(栈缓冲[:长度]) {
 	case "cluster":
 		目标写入路径[0] = cluster路径
 	case "master_server":
@@ -553,7 +633,6 @@ func api_file_write(w http.ResponseWriter, r *http.Request) {
 		目标写入路径[0] = 主世界world配置路径
 	case "caves_world":
 		目标写入路径[0] = 洞穴world配置路径
-
 	case "mod":
 		目标写入路径 = 写入mod配置文件路径集
 	case "setup":
@@ -593,7 +672,7 @@ var api_update_state413 = []byte(`{"status":"error", "message":"Payload Too Larg
 
 func api_update_state(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http报错(w, 405, poet405)
+		http报错(w, 405, post405)
 		return
 	}
 
@@ -834,6 +913,23 @@ func api_log_caves(w http.ResponseWriter, r *http.Request) {
 			冲刷器.Flush()
 		}
 	}
+}
+
+var api_checkupdate409 = []byte(`{"status":"error", "message":"invalid state"}`)
+
+func api_checkupdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http报错(w, 405, post405)
+		return
+	}
+	select {
+	case 主动触发更新检测 <- struct{}{}:
+	default:
+		http报错(w, 409, api_checkupdate409)
+		return
+	}
+	w.Header()["Content-Type"] = json头
+	w.Write(success200)
 }
 
 func 解析API无符号整型(载荷 []byte) uint32 {

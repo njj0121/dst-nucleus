@@ -650,6 +650,9 @@ var dict = map[string]string{
 	"池":              "vPool",
 	"发送洞穴参数":         "PostCavesTelemetry",
 	"防超时客户端":         "GatedHttpClient",
+	"主动触发更新检测":       "TriggerUpdateCheck",
+	"剩余":             "Remaining",
+	"块尾":             "ChunkEnd",
 }
 
 func main() {

@@ -64,6 +64,8 @@ func 自动安装() {
 	}
 }
 
+var 主动触发更新检测 = make(chan struct{})
+
 func 运行版本监控(生命周期 context.Context) {
 	检查间隔 := 全局配置.配置区2.检查更新间隔.Load()
 	if 检查间隔 < 60 {
@@ -72,6 +74,10 @@ func 运行版本监控(生命周期 context.Context) {
 
 	定时器 := time.NewTicker(time.Duration(检查间隔) * time.Second)
 	defer 定时器.Stop()
+	if !全局配置.配置区2.启用自动更新.Load() {
+		定时器.Stop()
+		定时器.C = nil
+	}
 
 	for {
 		select {
@@ -93,6 +99,26 @@ func 运行版本监控(生命周期 context.Context) {
 				default:
 				}
 				return
+			}
+
+		case <-主动触发更新检测:
+			if 探测游戏更新() == 状态_执行成功 {
+				select {
+				case 动作总线 <- 动作_执行游戏本体更新:
+				default:
+				}
+				return
+			}
+
+			if 探测模组更新() == 状态_执行成功 {
+				select {
+				case 动作总线 <- 动作_执行模组热更新:
+				default:
+				}
+				return
+			}
+			if 定时器.C != nil {
+				定时器.Reset(time.Duration(检查间隔) * time.Second)
 			}
 		}
 	}
