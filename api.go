@@ -938,51 +938,26 @@ func 解析API无符号整型(载荷 []byte) uint32 {
 	if len(载荷) == 0 {
 		return 4294967295
 	}
-	var 结果 uint32 = 0
-	有效数字 := false
-	for _, 字符 := range 载荷 {
-		if 字符 >= '0' && 字符 <= '9' {
-			结果 = 结果*10 + uint32(字符-'0')
-			有效数字 = true
-		} else {
-			return 4294967295
-		}
-	}
-	if !有效数字 {
+
+	解析结果, err := strconv.ParseUint(B2S(载荷), 10, 32)
+	if err != nil {
 		return 4294967295
 	}
-	return 结果
+
+	return uint32(解析结果)
 }
 
 func 解析API有符号整型(载荷 []byte) int32 {
 	if len(载荷) == 0 {
 		return 2147483647
 	}
-	负数 := false
-	起始位置 := 0
-	if 载荷[0] == '-' {
-		负数 = true
-		起始位置 = 1
-	}
 
-	var 结果 int32 = 0
-	有效数字 := false
-	for i := 起始位置; i < len(载荷); i++ {
-		字符 := 载荷[i]
-		if 字符 >= '0' && 字符 <= '9' {
-			结果 = 结果*10 + int32(字符-'0')
-			有效数字 = true
-		} else {
-			return 2147483647
-		}
-	}
-	if !有效数字 {
+	解析结果, err := strconv.ParseInt(B2S(载荷), 10, 32)
+	if err != nil {
 		return 2147483647
 	}
-	if 负数 {
-		return -结果
-	}
-	return 结果
+
+	return int32(解析结果)
 }
 
 func http报错(w http.ResponseWriter, 状态码 int, 响应体 []byte) {
