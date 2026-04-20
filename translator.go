@@ -170,6 +170,7 @@ var dict = map[string]string{
 	"发起请求":                "FireRequest",
 	"发送纯文本指令":             "EmitRawCmd",
 	"安全投递":                "ForcePushCmd",
+	"命令通道指针":              "CmdPipePtr",
 	"命令目标":                "CmdTarget",
 	"发往全服":                "RouteToAll",
 	"发往主世界":               "RouteToMaster",

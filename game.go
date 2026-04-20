@@ -68,6 +68,7 @@ func 运行主世界(生命周期 context.Context, 终止生命周期 context.Ca
 	defer 终止生命周期()
 	defer 全局配置.进程状态.主世界当前世代.Store(0)
 	defer 初始化游戏内状态()
+	defer 全局配置.原子锁.主世界就绪原子锁.Store(false)
 
 	if 全局配置.配置区2.洞穴世代同步链路 != "" {
 		go 远端世代传感器(生命周期, 全局配置.配置区2.洞穴世代同步链路, 动作_洞穴崩溃, "master", &全局配置.原子锁.主世界就绪原子锁)
@@ -99,7 +100,7 @@ func 运行主世界(生命周期 context.Context, 终止生命周期 context.Ca
 	}
 	设置进程退出信号(主世界进程)
 	进程结束信号 := make(chan struct{})
-	defer 杀掉进程(主世界进程, "Master", 进程结束信号, 终止饥荒世界生命周期, &全局配置.原子锁.主世界就绪原子锁)
+	defer 杀掉进程(主世界进程, "Master", &主世界命令通道, 进程结束信号, 终止饥荒世界生命周期, &全局配置.原子锁.主世界就绪原子锁)
 	for {
 		old := 全局配置.进程状态.PID.Load()
 		newPID := (old & 0x00000000FFFFFFFF) | (uint64(uint32(主世界进程.Process.Pid)) << 32)
@@ -116,7 +117,6 @@ func 运行主世界(生命周期 context.Context, 终止生命周期 context.Ca
 				break
 			}
 		}
-		全局配置.原子锁.主世界就绪原子锁.Store(false)
 	}()
 
 	go func() {
@@ -127,7 +127,7 @@ func 运行主世界(生命周期 context.Context, 终止生命周期 context.Ca
 		go 主世界探针轮询器(生命周期)
 		for {
 			select {
-			case <-生命周期.Done():
+			case <-进程结束信号:
 				return
 			case 命令 := <-主世界命令通道:
 				if 底层管道, 强转成功 := 主世界输入.(interface{ SetWriteDeadline(time.Time) error }); 强转成功 {
@@ -162,6 +162,7 @@ func 运行洞穴(生命周期 context.Context, 终止生命周期 context.Cance
 	defer wg.Done()
 	defer 终止生命周期()
 	defer 全局配置.进程状态.洞穴当前世代.Store(0)
+	defer 全局配置.原子锁.洞穴就绪原子锁.Store(false)
 	if !全局配置.配置区2.启用主世界.Load() {
 		defer 初始化游戏内状态()
 	}
@@ -196,7 +197,7 @@ func 运行洞穴(生命周期 context.Context, 终止生命周期 context.Cance
 	}
 	设置进程退出信号(洞穴进程)
 	进程结束信号 := make(chan struct{})
-	defer 杀掉进程(洞穴进程, "Caves", 进程结束信号, 终止饥荒世界生命周期, &全局配置.原子锁.洞穴就绪原子锁)
+	defer 杀掉进程(洞穴进程, "Caves", &洞穴命令通道, 进程结束信号, 终止饥荒世界生命周期, &全局配置.原子锁.洞穴就绪原子锁)
 	for {
 		old := 全局配置.进程状态.PID.Load()
 		newPID := (old & 0xFFFFFFFF00000000) | uint64(uint32(洞穴进程.Process.Pid))
@@ -212,7 +213,6 @@ func 运行洞穴(生命周期 context.Context, 终止生命周期 context.Cance
 				break
 			}
 		}
-		全局配置.原子锁.洞穴就绪原子锁.Store(false)
 	}()
 
 	go func() {
@@ -223,7 +223,7 @@ func 运行洞穴(生命周期 context.Context, 终止生命周期 context.Cance
 		go 洞穴探针轮询器(生命周期)
 		for {
 			select {
-			case <-生命周期.Done():
+			case <-进程结束信号:
 				return
 			case 命令 := <-洞穴命令通道:
 				if 底层管道, 强转成功 := 洞穴输入.(interface{ SetWriteDeadline(time.Time) error }); 强转成功 {
@@ -726,7 +726,7 @@ func 实时输出流(节点类型 uint8, 前缀 string, 读取器 io.Reader, 就
 	}
 }
 
-func 杀掉进程(cmd *exec.Cmd, 进程名称 string, 死亡传感器 <-chan struct{}, 终止生命周期 context.CancelFunc, 就绪标记 *atomic.Bool) {
+func 杀掉进程(cmd *exec.Cmd, 进程名称 string, 命令通道指针 *chan []byte, 死亡传感器 <-chan struct{}, 终止生命周期 context.CancelFunc, 就绪标记 *atomic.Bool) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
@@ -735,6 +735,7 @@ func 杀掉进程(cmd *exec.Cmd, 进程名称 string, 死亡传感器 <-chan str
 		终止生命周期()
 		<-死亡传感器
 		控制台合并输出换行(S2B("[core] "), S2B(进程名称), S2B(" has been purged from the OS."))
+		return
 	}
 
 	select {
@@ -743,21 +744,31 @@ func 杀掉进程(cmd *exec.Cmd, 进程名称 string, 死亡传感器 <-chan str
 	default:
 	}
 
-	err := cmd.Process.Signal(os.Interrupt)
-	if err != nil {
-		控制台合并输出换行(S2B("[warn] SIGINT failed, deploying SIGKILL immediately..."))
+	if 命令通道指针 != nil {
+		select {
+		case *命令通道指针 <- S2B("c_shutdown(true)\n"):
+			控制台合并输出换行(S2B("[core] "), S2B(进程名称), S2B(" c_shutdown dispatched."))
+		default:
+			控制台合并输出换行(S2B("[warn] "), S2B(进程名称), S2B(" command channel is full, deploying SIGKILL immediately..."))
+			终止生命周期()
+			<-死亡传感器
+			return
+		}
+	} else {
+		控制台合并输出换行(S2B("[warn] "), S2B(进程名称), S2B(" command channel missing, deploying SIGKILL immediately..."))
 		终止生命周期()
 		<-死亡传感器
+		return
 	}
 
-	超时秒表 := time.NewTimer(5 * time.Second)
+	超时秒表 := time.NewTimer(10 * time.Second)
 	defer 超时秒表.Stop()
 
 	select {
 	case <-死亡传感器:
 		控制台合并输出换行(S2B("[core] "), S2B(进程名称), S2B(" gracefully saved and terminated."))
 	case <-超时秒表.C:
-		控制台合并输出换行(S2B("[warn] "), S2B(进程名称), S2B(" shutdown timeout (5s)! deploying SIGKILL..."))
+		控制台合并输出换行(S2B("[warn] "), S2B(进程名称), S2B(" shutdown timeout (10s)! deploying SIGKILL..."))
 		终止生命周期()
 		<-死亡传感器
 		控制台合并输出换行(S2B("[core] "), S2B(进程名称), S2B(" has been purged from the OS."))

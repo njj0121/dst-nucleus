@@ -231,6 +231,12 @@
             <button onclick="req('/api/checkupdate', 'POST')">Check Update</button><br>
         </div>
         <div class="section">
+            <h3>GAME COMMAND</h3>
+            <button onclick="sendGameCommand('c_save()', 'master')">Master Save</button><br>
+            <button onclick="sendGameCommand('c_save()', 'caves')">Caves Save</button><br>
+            <button onclick="sendGameCommand('c_shutdown(true)', 'all')" class="danger-btn">Shutdown All</button><br>
+        </div>
+        <div class="section">
             <h3>CONFIG</h3>
             <button onclick="loadFile('cluster')">LOAD Cluster.ini</button><br>
             <button onclick="loadFile('master_server')">LOAD Master/server.ini</button><br>
@@ -308,6 +314,20 @@
                 const res = await fetch(url, { method: method, body: body });
                 if (!res.ok) throw new Error("HTTP " + res.status);
                 log("[ack] " + url);
+            } catch (e) {
+                log("[err] " + e.message, true);
+            }
+        }
+
+        async function sendGameCommand(cmd, target) {
+            log("[game-cmd] " + target + ": " + cmd + "...");
+            try {
+                const res = await fetch("/api/command?target=" + target, {
+                    method: "POST",
+                    body: cmd
+                });
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                log("[ack] " + target + " accepted command");
             } catch (e) {
                 log("[err] " + e.message, true);
             }

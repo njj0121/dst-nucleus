@@ -221,7 +221,7 @@ Triggers a highly aggressive shutdown sequence.
 
 Behavior: Flips the internal Master Switch to "OFF" (which physically prevents the watchdog from auto-restarting the game) and broadcasts a termination order to all active processes.
 
-The 5-Second Guillotine: The Core first sends a gentle `SIGINT` to the game, giving it a chance to gracefully save the world to the disk. If the game process freezes or ignores the signal for more than 5 seconds, the Core deploys a ruthless `SIGKILL` to annihilate the process directly from the OS kernel.
+The 10-Second Guillotine: The Core first injects `c_shutdown(true)` into the shard command channel, allowing the game to execute its own graceful shutdown path and save the world to disk. If the process freezes, ignores the command, or does not exit within 10 seconds, the Core deploys a ruthless `SIGKILL` to annihilate the process directly from the OS kernel.
 
 ### 5.3 /api/restart
 A macro endpoint that executes a clean cycle.
