@@ -19,6 +19,10 @@ steamcmd_path: ""
 # [MOD SYNC] Master Lua backup. Default: <DST_DIR>/mods/dst-nucleus_backup.lua
 # BEHAVIOR: Force-overwrites 'target' on EVERY boot. 
 # WARNING: Engine will NOT generate this. If missing, NO-OP. Pre-provision manually.
+# NOTE: Enabled mods from 'modoverrides.lua' are auto-appended into
+# 'dedicated_server_mods_setup.lua' during sync.
+# TIP: To auto-build an update list limited to currently enabled mods only,
+# point this to an empty text file.
 mod_setup_backup: ""
 
 # [ADVANCED] Target destination. Default: <DST_DIR>/mods/dedicated_server_mods_setup.lua

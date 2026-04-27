@@ -523,6 +523,12 @@ func api_file_read(w http.ResponseWriter, r *http.Request) {
 	switch string(栈缓冲[:长度]) {
 	case "cluster":
 		文件路径 = cluster路径
+	case "whitelist":
+		文件路径 = 白名单路径
+	case "blacklist":
+		文件路径 = 黑名单路径
+	case "adminlist":
+		文件路径 = 管理员名单路径
 	case "master_server":
 		文件路径 = 主世界server配置路径
 	case "caves_server":
@@ -627,6 +633,12 @@ func api_file_write(w http.ResponseWriter, r *http.Request) {
 	switch string(栈缓冲[:长度]) {
 	case "cluster":
 		目标写入路径[0] = cluster路径
+	case "whitelist":
+		目标写入路径[0] = 白名单路径
+	case "blacklist":
+		目标写入路径[0] = 黑名单路径
+	case "adminlist":
+		目标写入路径[0] = 管理员名单路径
 	case "master_server":
 		目标写入路径[0] = 主世界server配置路径
 	case "caves_server":
@@ -827,6 +839,9 @@ func api_log_master(w http.ResponseWriter, r *http.Request) {
 
 	主世界日志订阅 <- 事件通道
 
+	w.WriteHeader(200)
+	冲刷器.Flush()
+
 	defer func() {
 		主世界日志连接数.Add(-1)
 
@@ -879,6 +894,9 @@ func api_log_caves(w http.ResponseWriter, r *http.Request) {
 	洞穴日志连接数.Add(1)
 
 	洞穴日志订阅 <- 事件通道
+
+	w.WriteHeader(200)
+	冲刷器.Flush()
 
 	defer func() {
 		洞穴日志连接数.Add(-1)

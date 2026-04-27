@@ -213,6 +213,96 @@
         .log-input:focus {
             background: #000;
         }
+
+        .player-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+            margin-bottom: 8px;
+            position: sticky;
+            top: 0;
+            background: var(--panel);
+        }
+
+        .player-section-header h3 {
+            margin: 0;
+            border: none;
+            padding: 0;
+            background: transparent;
+            position: static;
+        }
+
+        .player-section-header button {
+            margin: 0;
+            padding: 2px 8px;
+            font-size: 11px;
+        }
+
+        .player-item {
+            padding: 5px 6px;
+            font-size: 12px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            color: #aaa;
+            margin-bottom: 2px;
+        }
+
+        .player-item:hover {
+            background: var(--btn-hover);
+            border-color: var(--border);
+            color: #fff;
+        }
+
+        #player-list-empty {
+            font-size: 12px;
+            color: #555;
+            padding: 4px 6px;
+        }
+
+        .player-modal {
+            display: none;
+            position: absolute;
+            top: 100px;
+            left: 300px;
+            width: 300px;
+            background: rgba(10, 10, 10, 0.97);
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            z-index: 200;
+            flex-direction: column;
+            backdrop-filter: blur(5px);
+        }
+
+        .player-modal-header {
+            background: var(--panel);
+            color: #fff;
+            padding: 8px 10px;
+            font-size: 12px;
+            font-weight: bold;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            user-select: none;
+        }
+
+        .player-modal-uid {
+            font-size: 10px;
+            color: #555;
+            padding: 4px 10px;
+            border-bottom: 1px solid #1a1a1a;
+            font-family: Consolas, monospace;
+        }
+
+        .player-modal-body {
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
     </style>
 </head>
 
@@ -234,11 +324,16 @@
             <h3>GAME COMMAND</h3>
             <button onclick="sendGameCommand('c_save()', 'master')">Master Save</button><br>
             <button onclick="sendGameCommand('c_save()', 'caves')">Caves Save</button><br>
+            <button onclick="sendToActive('local s = not TheNet:IsServerPaused(); TheNet:SetServerPaused(s)')">Toggle
+                Pause</button><br>
             <button onclick="sendGameCommand('c_shutdown(true)', 'all')" class="danger-btn">Shutdown All</button><br>
         </div>
         <div class="section">
             <h3>CONFIG</h3>
             <button onclick="loadFile('cluster')">LOAD Cluster.ini</button><br>
+            <button onclick="loadFile('whitelist')">LOAD whitelist.txt</button><br>
+            <button onclick="loadFile('blacklist')">LOAD blocklist.txt</button><br>
+            <button onclick="loadFile('adminlist')">LOAD adminlist.txt</button><br>
             <button onclick="loadFile('master_server')">LOAD Master/server.ini</button><br>
             <button onclick="loadFile('caves_server')">LOAD Caves/server.ini</button><br>
             <button onclick="loadFile('master_world')">LOAD Master worldgenoverride.lua</button><br>
@@ -267,6 +362,29 @@
             <div id="live-status" style="font-size: 12px; color: #888; line-height: 1.8; padding-bottom: 20px;">
                 [probe] establishing physical link...
             </div>
+        </div>
+        <div class="section">
+            <div class="player-section-header">
+                <h3>PLAYERS</h3>
+                <button onclick="startUserSync()">&#x21BB; Refresh</button>
+            </div>
+            <div id="player-list">
+                <div id="player-list-empty">[SYNCING PLAYERS...]</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="player-modal" class="player-modal" onmousedown="bringToFront(this)">
+        <div class="player-modal-header" onmousedown="startDrag(event, 'player-modal')">
+            <span id="player-modal-name">[PLAYER]</span>
+            <button class="danger-btn" onclick="closePlayerModal()">X</button>
+        </div>
+        <div class="player-modal-uid" id="player-modal-uid"></div>
+        <div class="player-modal-body">
+            <button onclick="playerModalAction('kick')">Kick Player</button>
+            <button onclick="playerModalAction('ban')" class="danger-btn">Ban Player</button>
+            <button onclick="playerModalAction('makeadmin')">Make Admin</button>
+            <button onclick="playerModalAction('revokeadmin')">Revoke Admin</button>
         </div>
     </div>
 
@@ -301,6 +419,25 @@
         const editor = document.getElementById("editor");
         const statusLog = document.getElementById("status-bar");
         const label = document.getElementById("current-file");
+        const playerListEl = document.getElementById("player-list");
+        const playerListEmpty = document.getElementById("player-list-empty");
+        const USER_SYNC_COMMAND = 'local seq=1; for _, v in ipairs(TheNet:GetClientTable()) do if v.userid and v.userid ~= "" and v.name ~= "[Host]" then print("USER_SYNC: seq=" .. seq .. " uid=" .. v.userid .. " name=\\"" .. tostring(v.name) .. "\\""); seq=seq+1 end end; print("USER_SYNC_EOF")';
+        const USER_SYNC_REGEX = /USER_SYNC:\s+seq=(\d+)\s+uid=(KU_[a-zA-Z0-9]+)\s+name="(.*)"\s*$/;
+        const USER_SYNC_EOF_REGEX = /USER_SYNC_EOF\s*$/;
+
+        let masterEnabled = true;
+        let tempUserSyncStream = null;
+        let userSyncUsingTempStream = false;
+        let userSyncConnectTimer = null;
+        let userSyncEofTimer = null;
+        let userSyncAwaitingEof = false;
+        let userSyncInFlight = false;
+        let userSyncState = {
+            target: "",
+            expectedSeq: 1,
+            hasGap: false,
+            players: []
+        };
 
         function log(msg, isErr = false) {
             statusLog.style.background = isErr ? "#330000" : "#002200";
@@ -319,6 +456,11 @@
             }
         }
 
+        function sendToActive(cmd) {
+            const target = masterEnabled ? 'master' : 'caves';
+            sendGameCommand(cmd, target);
+        }
+
         async function sendGameCommand(cmd, target) {
             log("[game-cmd] " + target + ": " + cmd + "...");
             try {
@@ -331,6 +473,247 @@
             } catch (e) {
                 log("[err] " + e.message, true);
             }
+        }
+
+        function getDefaultTarget() {
+            return masterEnabled ? "master" : "caves";
+        }
+
+        function closeTempUserSyncStream() {
+            if (tempUserSyncStream) {
+                tempUserSyncStream.close();
+                tempUserSyncStream = null;
+            }
+            userSyncUsingTempStream = false;
+            if (userSyncConnectTimer) {
+                clearTimeout(userSyncConnectTimer);
+                userSyncConnectTimer = null;
+            }
+        }
+
+        function clearUserSyncEofTimer() {
+            if (userSyncEofTimer) {
+                clearTimeout(userSyncEofTimer);
+                userSyncEofTimer = null;
+            }
+        }
+
+        function failUserSync(reason) {
+            userSyncInFlight = false;
+            userSyncAwaitingEof = false;
+            clearUserSyncEofTimer();
+            log(reason, true);
+            playerListEl.innerHTML = "";
+            playerListEmpty.textContent = "[SYNC FAILED]";
+            playerListEl.appendChild(playerListEmpty);
+            userSyncState.target = "";
+            if (userSyncUsingTempStream) {
+                closeTempUserSyncStream();
+            }
+        }
+
+        function armUserSyncEofTimer() {
+            clearUserSyncEofTimer();
+            userSyncEofTimer = setTimeout(() => {
+                failUserSync("[err] USER_SYNC timeout waiting EOF (3s)");
+            }, 3000);
+        }
+
+        async function sendUserSyncCommand(target) {
+            log("[game-cmd] " + target + ": " + USER_SYNC_COMMAND + "...");
+            try {
+                const res = await fetch("/api/command?target=" + target, {
+                    method: "POST",
+                    body: USER_SYNC_COMMAND
+                });
+                if (res.status !== 200) throw new Error("HTTP " + res.status);
+                userSyncAwaitingEof = true;
+                armUserSyncEofTimer();
+                log("[ack] " + target + " accepted command");
+                return true;
+            } catch (e) {
+                failUserSync("[err] USER_SYNC dispatch failed: " + e.message);
+                return false;
+            }
+        }
+
+        function resetUserSyncState(target) {
+            userSyncState = {
+                target: target,
+                expectedSeq: 1,
+                hasGap: false,
+                players: []
+            };
+            playerListEl.innerHTML = "";
+            playerListEmpty.textContent = "[SYNCING PLAYERS...]";
+            playerListEl.appendChild(playerListEmpty);
+        }
+
+        function finalizeUserSync() {
+            const sorted = userSyncState.players.slice().sort((a, b) => a.seq - b.seq);
+            userSyncInFlight = false;
+            userSyncAwaitingEof = false;
+            clearUserSyncEofTimer();
+            playerListEl.innerHTML = "";
+
+            if (sorted.length === 0) {
+                playerListEmpty.textContent = "[NO PLAYERS ONLINE]";
+                playerListEl.appendChild(playerListEmpty);
+            } else {
+                for (const p of sorted) {
+                    const row = document.createElement("div");
+                    row.className = "player-item";
+                    row.textContent = p.name;
+                    row.dataset.uid = p.uid;
+                    row.onclick = () => openPlayerModal(p.uid, p.name);
+                    playerListEl.appendChild(row);
+                }
+            }
+
+            if (userSyncState.hasGap) {
+                log("[warn] USER_SYNC sequence gap detected", true);
+            } else {
+                log("[ok] USER_SYNC completed: " + sorted.length + " players");
+            }
+
+            if (userSyncUsingTempStream) {
+                closeTempUserSyncStream();
+            }
+        }
+
+        let modalTargetUid = "";
+        let modalTargetName = "";
+
+        function openPlayerModal(uid, name) {
+            modalTargetUid = uid;
+            modalTargetName = name;
+            document.getElementById("player-modal-name").textContent = name;
+            document.getElementById("player-modal-uid").textContent = uid;
+            const modal = document.getElementById("player-modal");
+            modal.style.display = "flex";
+            bringToFront(modal);
+        }
+
+        function closePlayerModal() {
+            document.getElementById("player-modal").style.display = "none";
+        }
+
+        function playerModalAction(action) {
+            const target = getDefaultTarget();
+            let cmd = "";
+            if (action === "kick") {
+                cmd = 'TheNet:Kick("' + modalTargetUid + '")';
+            } else if (action === "ban") {
+                cmd = 'TheNet:BanForever("' + modalTargetUid + '")';
+            } else if (action === "makeadmin") {
+                cmd = 'TheNet:SetClientAdmin("' + modalTargetUid + '", true)';
+            } else if (action === "revokeadmin") {
+                cmd = 'TheNet:SetClientAdmin("' + modalTargetUid + '", false)';
+            }
+            if (cmd) sendGameCommand(cmd, target);
+        }
+
+        function handleUserSyncLine(line, sourceTarget) {
+            if (!userSyncState.target || userSyncState.target !== sourceTarget) return;
+
+            if (userSyncAwaitingEof) {
+                armUserSyncEofTimer();
+            }
+
+            if (USER_SYNC_EOF_REGEX.test(line)) {
+                finalizeUserSync();
+                return;
+            }
+
+            const m = line.match(USER_SYNC_REGEX);
+            if (!m) return;
+
+            const seq = parseInt(m[1], 10);
+            const uid = m[2];
+            const name = m[3];
+
+            if (seq !== userSyncState.expectedSeq) {
+                userSyncState.hasGap = true;
+            }
+            userSyncState.expectedSeq = seq + 1;
+            userSyncState.players.push({ seq, uid, name });
+        }
+
+        function resolveOpenLogSyncTarget() {
+            const masterOpen = !!logStreams.master && document.getElementById("log-window-master").style.display === "flex";
+            const cavesOpen = !!logStreams.caves && document.getElementById("log-window-caves").style.display === "flex";
+
+            if (masterOpen && cavesOpen) return "master";
+            if (masterOpen) return "master";
+            if (cavesOpen) return "caves";
+            return "";
+        }
+
+        function scanLogForTriggers(line, sourceTarget) {
+            const activeTarget = resolveOpenLogSyncTarget();
+            if (!activeTarget || sourceTarget !== activeTarget) {
+                return;
+            }
+
+            if (/Announcement/.test(line)) {
+                startUserSync(sourceTarget);
+            }
+        }
+
+        function startUserSync(target) {
+            if (userSyncInFlight) {
+                log("[sys] USER_SYNC already running, skip");
+                return;
+            }
+
+            userSyncInFlight = true;
+
+            if (!target || typeof target !== 'string') {
+                target = getDefaultTarget();
+            }
+
+            resetUserSyncState(target);
+            userSyncAwaitingEof = false;
+            clearUserSyncEofTimer();
+
+            const logWindow = document.getElementById(`log-window-${target}`);
+            const streamAlreadyOpen = logWindow && logWindow.style.display === "flex" && !!logStreams[target];
+
+            if (streamAlreadyOpen) {
+                userSyncUsingTempStream = false;
+                sendUserSyncCommand(target);
+                return;
+            }
+
+            closeTempUserSyncStream();
+            userSyncUsingTempStream = true;
+            tempUserSyncStream = new EventSource(`/api/log/${target}`);
+
+            userSyncConnectTimer = setTimeout(() => {
+                if (tempUserSyncStream) {
+                    log("[err] USER_SYNC log listener connect timeout (3s)", true);
+                    closeTempUserSyncStream();
+                    failUserSync("[err] USER_SYNC timeout"); // 保证释放CAS锁
+                }
+            }, 3000);
+
+            tempUserSyncStream.onopen = () => {
+                if (userSyncConnectTimer) {
+                    clearTimeout(userSyncConnectTimer);
+                    userSyncConnectTimer = null;
+                }
+                sendUserSyncCommand(target);
+            };
+            tempUserSyncStream.onmessage = (e) => {
+                const lines = String(e.data || "").split(/\r?\n/);
+                for (const line of lines) {
+                    if (!line) continue;
+                    handleUserSyncLine(line, target);
+                }
+            };
+            tempUserSyncStream.onerror = () => {
+                failUserSync("[err] USER_SYNC log listener offline");
+            };
         }
 
         async function loadFile(target) {
@@ -392,6 +775,7 @@
                 const 锁 = 报文.locks || {};
                 const 性能 = 报文.performance || {};
 
+                masterEnabled = !!数据.enable_master;
                 const isLoaded = 数据.cycles !== undefined && 数据.cycles < 2097151;
 
                 const 在线 = isLoaded ? 数据.players : "-";
@@ -559,7 +943,13 @@
                             titleEl.innerText = `[STREAM] ${type.toUpperCase()} LOGS`;
                         }
 
-                        logBuffer[type].push(e.data);
+                        const lines = String(e.data || "").split(/\r?\n/);
+                        for (const line of lines) {
+                            if (!line) continue;
+                            logBuffer[type].push(line);
+                            handleUserSyncLine(line, type);
+                            scanLogForTriggers(line, type);
+                        }
 
                         if (logBuffer[type].length > 1000) {
                             logBuffer[type].shift();
@@ -597,6 +987,7 @@
                         titleEl.innerText = `[OFFLINE] ${type.toUpperCase()} (RETRYING...)`;
                     };
                 }
+
             }
         }
 
@@ -677,6 +1068,7 @@
                 }
             }
         }
+
     </script>
 </body>
 

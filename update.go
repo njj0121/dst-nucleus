@@ -71,8 +71,9 @@ func 运行版本监控(生命周期 context.Context) {
 	if 检查间隔 < 60 {
 		检查间隔 = 60
 	}
+	定时器间隔 := time.Duration(检查间隔) * time.Second
 
-	定时器 := time.NewTicker(time.Duration(检查间隔) * time.Second)
+	定时器 := time.NewTicker(定时器间隔)
 	defer 定时器.Stop()
 	if !全局配置.配置区2.启用自动更新.Load() {
 		定时器.Stop()
@@ -118,7 +119,7 @@ func 运行版本监控(生命周期 context.Context) {
 				return
 			}
 			if 定时器.C != nil {
-				定时器.Reset(time.Duration(检查间隔) * time.Second)
+				定时器.Reset(定时器间隔)
 			}
 		}
 	}

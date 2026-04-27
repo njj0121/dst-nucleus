@@ -243,6 +243,12 @@ The `target` query parameter strictly limits access to predefined, whitelisted p
 
 * `cluster`: Global cluster settings (`cluster.ini`).
 
+* `whitelist`: Player allowlist (`whitelist.txt`).
+
+* `blacklist`: Player blocklist (`blocklist.txt`).
+
+* `adminlist`: Admin user list (`adminlist.txt`).
+
 * `master_server` / `caves_server`: Shard-specific settings (`server.ini`).
 
 * `master_world` / `caves_world`: World generation overrides (`worldgenoverride.lua`).
@@ -269,6 +275,12 @@ This endpoint safely and atomically overwrites the specified configuration file.
 
 #### Supported Targets
 * `cluster`: Global cluster settings (`cluster.ini`).
+
+* `whitelist`: Player allowlist (`whitelist.txt`).
+
+* `blacklist`: Player blocklist (`blocklist.txt`).
+
+* `adminlist`: Admin user list (`adminlist.txt`).
 
 * `master_server` / caves_server: Shard-specific settings (`server.ini`).
 

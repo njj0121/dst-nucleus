@@ -7,8 +7,8 @@ import (
 var 全局配置 = &系统配置{}
 
 func init() {
-	全局配置.配置区1.Magic = 0x6E6A6A5F6473746E //6E7473642D6A6A6E
-	全局配置.游戏内状态.Magic = 0x6E6A6A2D6473746E
+	全局配置.配置区1.Magic = 0x6E6A6A5F6473746E  //6E7473645F6A6A6E
+	全局配置.游戏内状态.Magic = 0x6E6A6A2D6473746E //6E7473642D6A6A6E
 }
 
 type 系统配置 struct {
@@ -137,6 +137,9 @@ var (
 	洞穴world配置路径   string
 	游戏版本acf文件路径   string
 	mod版本acf文件路径  string
+	白名单路径         string
+	黑名单路径         string
+	管理员名单路径       string
 	steamcmd程序路径  string
 	游戏程序路径        string
 
