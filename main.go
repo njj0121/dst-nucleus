@@ -217,6 +217,7 @@ func main() {
 		}
 
 		终止生命周期()
+		全局局部生命周期终结.Store(nil)
 		wg.Wait()
 		控制台合并输出换行(S2B("[core] process group destroyed, fd locks released."))
 
