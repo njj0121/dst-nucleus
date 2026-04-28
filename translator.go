@@ -463,6 +463,7 @@ var dict = map[string]string{
 	"缺换行符":           "MissingNL",
 	"自动启动服务器":        "AutoStartServer",
 	"自动安装":           "AutoInstall",
+	"自动更新定时器间隔":      "AutoUpdateTickerInterval",
 	"自定义等待时间":        "CustomWaitTime",
 	"自身名称":           "SelfName",
 	"磁盘彻底落盘缓冲毫秒数":    "DiskFlushDelayMs",

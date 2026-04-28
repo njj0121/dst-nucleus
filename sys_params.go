@@ -147,21 +147,21 @@ var (
 	写入mod配置文件路径集 [2]string
 )
 
-func 初始化核心中枢(s *系统配置) {
-	s.配置区1.存档名称 = "MyDediServer"
-	s.配置区1.SteamCmd路径 = steamcmd默认路径
-	s.配置区1.启动后自动安装 = false
-	s.配置区1.跳过linux自检 = false
-	s.配置区1.跳过root自检 = false
-	s.配置区1.自动启动服务器 = true
-	s.配置区2.启用自动更新.Store(true)
-	s.配置区2.检查更新间隔.Store(600)
-	s.配置区2.优雅重启等待时间.Store(480)
-	s.配置区2.是否写入默认配置.Store(false)
-	s.配置区2.启用崩溃重启.Store(true)
-	s.配置区2.启用洞穴.Store(true)
-	s.配置区2.启用主世界.Store(true)
-	s.全服监控态.采样间隔.Store(500)
+func 初始化核心中枢() {
+	全局配置.配置区1.存档名称 = "MyDediServer"
+	全局配置.配置区1.SteamCmd路径 = steamcmd默认路径
+	全局配置.配置区1.启动后自动安装 = false
+	全局配置.配置区1.跳过linux自检 = false
+	全局配置.配置区1.跳过root自检 = false
+	全局配置.配置区1.自动启动服务器 = true
+	全局配置.配置区2.启用自动更新.Store(true)
+	全局配置.配置区2.检查更新间隔.Store(600)
+	全局配置.配置区2.优雅重启等待时间.Store(480)
+	全局配置.配置区2.是否写入默认配置.Store(false)
+	全局配置.配置区2.启用崩溃重启.Store(true)
+	全局配置.配置区2.启用洞穴.Store(true)
+	全局配置.配置区2.启用主世界.Store(true)
+	全局配置.全服监控态.采样间隔.Store(500)
 
 }
 
