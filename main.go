@@ -118,6 +118,7 @@ func main() {
 		控制台合并输出换行(S2B("[warn] interval too short, auto-adjusted to 60s"))
 		全局配置.配置区2.检查更新间隔.Store(60)
 	}
+	自动更新定时器间隔 = time.Duration(全局配置.配置区2.检查更新间隔.Load()) * time.Second
 
 	全局配置.配置区1.通用启动参数 = []string{}
 	if 全局配置.配置区1.存档根目录 == "" {

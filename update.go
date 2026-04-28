@@ -65,15 +65,10 @@ func 自动安装() {
 }
 
 var 主动触发更新检测 = make(chan struct{})
+var 自动更新定时器间隔 time.Duration
 
 func 运行版本监控(生命周期 context.Context) {
-	检查间隔 := 全局配置.配置区2.检查更新间隔.Load()
-	if 检查间隔 < 60 {
-		检查间隔 = 60
-	}
-	定时器间隔 := time.Duration(检查间隔) * time.Second
-
-	定时器 := time.NewTicker(定时器间隔)
+	定时器 := time.NewTicker(自动更新定时器间隔)
 	defer 定时器.Stop()
 	if !全局配置.配置区2.启用自动更新.Load() {
 		定时器.Stop()
@@ -119,7 +114,7 @@ func 运行版本监控(生命周期 context.Context) {
 				return
 			}
 			if 定时器.C != nil {
-				定时器.Reset(定时器间隔)
+				定时器.Reset(自动更新定时器间隔)
 			}
 		}
 	}
