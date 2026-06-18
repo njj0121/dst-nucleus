@@ -149,6 +149,7 @@ var dict = map[string]string{
 	"复制文件":                "CloneFile",
 	"初始空状态":               "ZeroState",
 	"初始化核心中枢":             "BootNucleus",
+	"初始化路径":               "InitPaths",
 	"初始化游戏内状态":            "InitGameState",
 	"启动高性能底层监听":           "BootRawListener",
 	"启动本地api接口":           "BootLocalApi",
@@ -659,6 +660,8 @@ var dict = map[string]string{
 	"主动触发更新检测":       "TriggerUpdateCheck",
 	"剩余":             "Remaining",
 	"块尾":             "ChunkEnd",
+	"流处理错误":          "StreamErr",
+	"已写总数":           "TotalWritten",
 }
 
 func main() {

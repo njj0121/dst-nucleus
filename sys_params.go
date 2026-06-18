@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"sync/atomic"
 )
 
@@ -186,4 +187,34 @@ func 初始化游戏内状态() {
 	全局配置.游戏内状态.邪天翁倒计时.Store(4294967295)
 	全局配置.游戏内状态.果蝇王倒计时.Store(4294967295)
 	全局配置.游戏内状态.蚁狮踩踏分钟倒计时.Store(4294967295)
+}
+
+func 初始化路径() {
+	主世界mod配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "modoverrides.lua")
+	洞穴mod配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "modoverrides.lua")
+	cluster路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "cluster.ini")
+	白名单路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "whitelist.txt")
+	黑名单路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "blocklist.txt")
+	管理员名单路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "adminlist.txt")
+	主世界server配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "server.ini")
+	洞穴server配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "server.ini")
+	主世界world配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "worldgenoverride.lua")
+	洞穴world配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "worldgenoverride.lua")
+	游戏版本acf文件路径 = filepath.Join(全局配置.配置区1.SteamCmd路径, "steamapps", "appmanifest_343050.acf")
+	mod版本acf文件路径 = filepath.Join(全局配置.配置区1.SteamCmd路径, "steamapps", "workshop", "appworkshop_322330.acf")
+	steamcmd程序路径 = filepath.Join(全局配置.配置区1.SteamCmd路径, steamcmd文件名)
+	游戏程序路径 = filepath.Join(全局配置.配置区1.游戏程序目录, 饥荒可执行文件名)
+	mod更新配置文件路径集[0] = 全局配置.配置区1.模组Lua更新文件目标路径
+	if 全局配置.配置区2.启用主世界.Load() {
+		mod更新配置文件路径集[1] = 主世界mod配置路径
+		写入mod配置文件路径集[0] = 主世界mod配置路径
+	}
+	if 全局配置.配置区2.启用洞穴.Load() {
+		mod更新配置文件路径集[2] = 洞穴mod配置路径
+		if 写入mod配置文件路径集[0] == "" {
+			写入mod配置文件路径集[0] = 洞穴mod配置路径
+		} else {
+			写入mod配置文件路径集[1] = 洞穴mod配置路径
+		}
+	}
 }

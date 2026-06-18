@@ -27,7 +27,7 @@ var 文件读写原子锁 状态锁
 
 var 接收缓冲池 = sync.Pool{
 	New: func() any {
-		b := make([]byte, 1024)
+		b := make([]byte, 10*1024)
 		return &b
 	},
 }
@@ -293,8 +293,6 @@ func api_command(w http.ResponseWriter, r *http.Request) {
 		命令目标 = strings.ToLower(命令目标)
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 1024)
-
 	池化指针 := 接收缓冲池.Get().(*[]byte)
 	临时缓冲 := *池化指针
 
@@ -306,8 +304,14 @@ func api_command(w http.ResponseWriter, r *http.Request) {
 	读取总数 := 0
 	for {
 		if 读取总数 == len(临时缓冲) {
-			http报错(w, 413, api_command413)
-			return
+			n, err := r.Body.Read(临时缓冲[:1])
+
+			if n > 0 || (err != nil && err != io.EOF) {
+				http报错(w, 413, api_command413)
+				return
+			}
+
+			break
 		}
 
 		n, err := r.Body.Read(临时缓冲[读取总数:])
@@ -593,6 +597,11 @@ func api_file_write(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.ContentLength > 1024*1024 || r.ContentLength < 0 {
+		http报错(w, 413, api_file_read413)
+		return
+	}
+
 	queryBytes := S2B(r.URL.RawQuery)
 
 	var 目标 []byte
@@ -662,9 +671,7 @@ func api_file_write(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
-
-	if err := 原子写文件流(目标写入路径[0], r.Body); err != 0 {
+	if err := 原子写文件流(目标写入路径[0], r.Body, 1024*1024); err != 0 {
 		控制台合并输出换行(S2B("[sys] write failed "), S2B(目标写入路径[0]))
 		http报错(w, 500, api_file_write500_1)
 		return
@@ -701,8 +708,14 @@ func api_update_state(w http.ResponseWriter, r *http.Request) {
 	读取总数 := 0
 	for {
 		if 读取总数 == len(临时缓冲) {
-			http报错(w, 413, api_update_state413)
-			return
+			n, err := r.Body.Read(临时缓冲[:1])
+
+			if n > 0 || (err != nil && err != io.EOF) {
+				http报错(w, 413, api_update_state413)
+				return
+			}
+
+			break
 		}
 
 		n, err := r.Body.Read(临时缓冲[读取总数:])
@@ -711,6 +724,7 @@ func api_update_state(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+
 	if 读取总数 == 0 {
 		http报错(w, 400, error4xx)
 		return
@@ -991,7 +1005,7 @@ var 原子写文件流缓冲池 = sync.Pool{
 	},
 }
 
-func 原子写文件流(目标路径 string, 源流 io.Reader) uint8 {
+func 原子写文件流(目标路径 string, 源流 io.Reader, 最大字节数 int64) uint8 {
 	目标目录 := filepath.Dir(目标路径)
 	os.MkdirAll(目标目录, 0755)
 
@@ -1005,14 +1019,40 @@ func 原子写文件流(目标路径 string, 源流 io.Reader) uint8 {
 	defer os.Remove(临时路径)
 
 	缓冲指针 := 原子写文件流缓冲池.Get().(*[]byte)
+	临时缓冲 := *缓冲指针
 
-	_, err = io.CopyBuffer(临时文件, 源流, *缓冲指针)
+	var 已写总数 int64
+	var 流处理错误 error
+
+	for {
+		读取量, 读错误 := 源流.Read(临时缓冲)
+		if 读取量 > 0 {
+			已写总数 += int64(读取量)
+			if 已写总数 > 最大字节数 {
+				流处理错误 = io.ErrShortBuffer
+				break
+			}
+
+			写入量, 写错误 := 临时文件.Write(临时缓冲[:读取量])
+			if 写错误 != nil || 写入量 < 读取量 {
+				流处理错误 = 写错误
+				break
+			}
+		}
+
+		if 读错误 != nil {
+			if 读错误 != io.EOF {
+				流处理错误 = 读错误
+			}
+			break
+		}
+	}
 
 	原子写文件流缓冲池.Put(缓冲指针)
 
-	if err != nil {
+	if 流处理错误 != nil {
 		临时文件.Close()
-		控制台合并输出换行(S2B("[sys] stream copy interrupted: "), E2B(err))
+		控制台合并输出换行(S2B("[sys] stream copy interrupted: "), E2B(流处理错误))
 		return 129
 	}
 

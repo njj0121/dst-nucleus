@@ -82,33 +82,7 @@ func main() {
 		全局配置.配置区1.模组Lua更新备份 = filepath.Join(全局配置.配置区1.SteamCmd路径, "steamapps", "common", "Don't Starve Together Dedicated Server", "mods", "dst-nucleus_backup.lua")
 	}
 
-	主世界mod配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "modoverrides.lua")
-	洞穴mod配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "modoverrides.lua")
-	cluster路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "cluster.ini")
-	白名单路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "whitelist.txt")
-	黑名单路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "blocklist.txt")
-	管理员名单路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "adminlist.txt")
-	主世界server配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "server.ini")
-	洞穴server配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "server.ini")
-	主世界world配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Master", "worldgenoverride.lua")
-	洞穴world配置路径 = filepath.Join(全局配置.配置区1.存档根目录, "DoNotStarveTogether", 全局配置.配置区1.存档名称, "Caves", "worldgenoverride.lua")
-	游戏版本acf文件路径 = filepath.Join(全局配置.配置区1.SteamCmd路径, "steamapps", "appmanifest_343050.acf")
-	mod版本acf文件路径 = filepath.Join(全局配置.配置区1.SteamCmd路径, "steamapps", "workshop", "appworkshop_322330.acf")
-	steamcmd程序路径 = filepath.Join(全局配置.配置区1.SteamCmd路径, steamcmd文件名)
-	游戏程序路径 = filepath.Join(全局配置.配置区1.游戏程序目录, 饥荒可执行文件名)
-	mod更新配置文件路径集[0] = 全局配置.配置区1.模组Lua更新文件目标路径
-	if 全局配置.配置区2.启用主世界.Load() {
-		mod更新配置文件路径集[1] = 主世界mod配置路径
-		写入mod配置文件路径集[0] = 主世界mod配置路径
-	}
-	if 全局配置.配置区2.启用洞穴.Load() {
-		mod更新配置文件路径集[2] = 洞穴mod配置路径
-		if 写入mod配置文件路径集[0] == "" {
-			写入mod配置文件路径集[0] = 洞穴mod配置路径
-		} else {
-			写入mod配置文件路径集[1] = 洞穴mod配置路径
-		}
-	}
+	初始化路径()
 
 	if 全局配置.配置区1.启动后自动安装 {
 		自动安装()
@@ -250,6 +224,12 @@ func 看门狗() {
 	<-信号通道
 
 	全局生命周期终结()
+
+	<-time.After(5 * time.Second)
+	控制台合并输出换行(S2B("[watchdog] graceful shutdown timeout reached, force-exit in 5s..."))
+
+	<-time.After(5 * time.Second)
+	os.Exit(1)
 }
 
 func 监听控制台输入() {

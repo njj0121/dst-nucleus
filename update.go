@@ -42,10 +42,9 @@ func 自动安装() {
 		break
 	}
 
-安装游戏:
 	for {
 		if _, err := os.Stat(游戏程序路径); err == nil {
-			break 安装游戏
+			break
 		} else if !os.IsNotExist(err) {
 			控制台合并输出换行(S2B("[fatal] game binary fs corruption: "), E2B(err))
 		}
@@ -1053,7 +1052,7 @@ func 获取远程模组更新时间(模组列表 []uint64) (map[uint64]int64, ui
 func 复制文件(源路径, 目标路径 string) (int64, uint8) {
 	const 最大重试次数 = 3
 
-	for i := 0; i < 最大重试次数; i++ {
+	for range 最大重试次数 {
 		读前状态, err := os.Stat(源路径)
 		if err != nil {
 			return 0, 128
@@ -1101,7 +1100,8 @@ func 复制文件(源路径, 目标路径 string) (int64, uint8) {
 		}
 
 		var renameErr error
-		for j := 0; j < 5; j++ {
+		const 最大重试次数 = 5
+		for range 最大重试次数 {
 			renameErr = os.Rename(临时路径, 目标路径)
 			if renameErr == nil {
 				break
