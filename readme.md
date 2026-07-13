@@ -9,6 +9,7 @@ All source code is written in Chinese. If you need to read the code but don't un
 
 ## Core Design Philosophy
 
+* **Zero-touch Daemon**
 * **Single Binary <10M**
 * **Flat Memory Profile**
 * **Zero Database**
@@ -59,7 +60,7 @@ Fetch the latest pre-compiled binary, extract it, and clean up the tarball.
 ```
 cd /home/steam
 
-wget https://github.com/njj0121//dst-nucleus/releases/latest/download/dstn-linux-amd64.tar.gz
+wget https://github.com/njj0121/dst-nucleus/releases/latest/download/dstn-linux-amd64.tar.gz
 tar -xzf dstn-linux-amd64.tar.gz
 rm dstn-linux-amd64.tar.gz
 ```

@@ -1,3 +1,3 @@
 module github.com/njj0121/dst-nucleus
 
-go 1.26.2
+go 1.26.4
