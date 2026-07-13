@@ -12,130 +12,130 @@ import (
 )
 
 //go:embed default.yaml
-var 默认配置文件 []byte
+var DefConfFile []byte
 
-const 物理上限 = 64 << 10
+const HardLimit = 64 << 10
 
-var 配置文件目录 = "config.yaml"
+var ConfDir = "config.yaml"
 
-func 加载配置(目标 any, 文件路径 string) uint8 {
-	信息, err := os.Stat(文件路径)
+func LoadConfig(Target any, FilePath string) uint8 {
+	Info, err := os.Stat(FilePath)
 	if err != nil {
 		return 128
 	}
 
-	if 信息.Size() > 物理上限 {
+	if Info.Size() > HardLimit {
 		return 129
 	}
-	文件, err := os.Open(文件路径)
+	vFile, err := os.Open(FilePath)
 	if err != nil {
 		return 130
 	}
-	defer 文件.Close()
+	defer vFile.Close()
 
-	配置图 := make(map[string]string)
-	扫描器 := bufio.NewScanner(文件)
-	for 扫描器.Scan() {
-		行 := strings.TrimSpace(扫描器.Text())
-		if 行 == "" || strings.HasPrefix(行, "#") {
+	ConfigMap := make(map[string]string)
+	Scanner := bufio.NewScanner(vFile)
+	for Scanner.Scan() {
+		Line := strings.TrimSpace(Scanner.Text())
+		if Line == "" || strings.HasPrefix(Line, "#") {
 			continue
 		}
-		部分 := strings.SplitN(行, ":", 2)
-		if len(部分) == 2 {
-			键 := strings.TrimSpace(部分[0])
-			值 := strings.TrimSpace(部分[1])
-			值 = strings.Trim(值, "\"'`")
-			if 值 != "" {
-				配置图[键] = 值
+		Chunk := strings.SplitN(Line, ":", 2)
+		if len(Chunk) == 2 {
+			Key := strings.TrimSpace(Chunk[0])
+			Val := strings.TrimSpace(Chunk[1])
+			Val = strings.Trim(Val, "\"'`")
+			if Val != "" {
+				ConfigMap[Key] = Val
 			}
 		}
 	}
 
-	return 递归填充(reflect.ValueOf(目标), 配置图)
+	return RecurseFill(reflect.ValueOf(Target), ConfigMap)
 }
 
-func 递归填充(对象 reflect.Value, 数据 map[string]string) uint8 {
-	v := 对象
+func RecurseFill(Entity reflect.Value, vData map[string]string) uint8 {
+	v := Entity
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
 
 	t := v.Type()
 	for i := 0; i < v.NumField(); i++ {
-		字段 := v.Field(i)
-		字段类型 := t.Field(i)
+		vField := v.Field(i)
+		FieldType := t.Field(i)
 
-		if 字段类型.Name == "_" {
+		if FieldType.Name == "_" {
 			continue
 		}
 
-		if 字段.Kind() == reflect.Struct {
-			if !strings.HasPrefix(字段.Type().PkgPath(), "sync/atomic") {
-				递归填充(字段.Addr(), 数据)
+		if vField.Kind() == reflect.Struct {
+			if !strings.HasPrefix(vField.Type().PkgPath(), "sync/atomic") {
+				RecurseFill(vField.Addr(), vData)
 				continue
 			}
 		}
 
-		标签 := 字段类型.Tag.Get("yaml")
-		if 标签 == "" {
+		vTag := FieldType.Tag.Get("yaml")
+		if vTag == "" {
 			//标签 = 字段类型.Name
 			continue
 		}
 
-		值, 存在 := 数据[标签]
-		if !存在 {
+		Val, Exists := vData[vTag]
+		if !Exists {
 			continue
 		}
 
-		指针 := reflect.NewAt(字段.Type(), unsafe.Pointer(字段.UnsafeAddr())).Interface()
-		switch 目标 := 指针.(type) {
+		vPtr := reflect.NewAt(vField.Type(), unsafe.Pointer(vField.UnsafeAddr())).Interface()
+		switch Target := vPtr.(type) {
 		case *atomic.Bool:
-			目标.Store(len(值) > 0 && (值[0]|32 == 't'))
+			Target.Store(len(Val) > 0 && (Val[0]|32 == 't'))
 		case *atomic.Uint32:
-			if n, err := strconv.ParseUint(值, 10, 32); err == nil {
-				目标.Store(uint32(n))
+			if n, err := strconv.ParseUint(Val, 10, 32); err == nil {
+				Target.Store(uint32(n))
 			}
 		case *atomic.Uint64:
-			if n, err := strconv.ParseUint(值, 10, 64); err == nil {
-				目标.Store(n)
+			if n, err := strconv.ParseUint(Val, 10, 64); err == nil {
+				Target.Store(n)
 			}
 		case *atomic.Int64:
-			if n, err := strconv.ParseInt(值, 10, 64); err == nil {
-				目标.Store(n)
+			if n, err := strconv.ParseInt(Val, 10, 64); err == nil {
+				Target.Store(n)
 			}
 		case *string:
-			*目标 = 值
+			*Target = Val
 		case *bool:
-			*目标 = len(值) > 0 && (值[0]|32 == 't')
+			*Target = len(Val) > 0 && (Val[0]|32 == 't')
 		case *atomic.Value:
-			目标.Store(值)
+			Target.Store(Val)
 		}
 	}
 	return 0
 }
 
-func 校验配置是否为原始默认版本(当前文件, 默认模板 []byte) bool {
+func IsFactoryDefault(CurrFile, DefTpl []byte) bool {
 	i, j := 0, 0
-	总长文件 := len(当前文件)
-	总长模板 := len(默认模板)
+	TotalLenFile := len(CurrFile)
+	TotalLenTpl := len(DefTpl)
 
-	for i < 总长文件 || j < 总长模板 {
-		for i < 总长文件 && (当前文件[i] == '\r' || 当前文件[i] == '\n') {
+	for i < TotalLenFile || j < TotalLenTpl {
+		for i < TotalLenFile && (CurrFile[i] == '\r' || CurrFile[i] == '\n') {
 			i++
 		}
-		for j < 总长模板 && (默认模板[j] == '\r' || 默认模板[j] == '\n') {
+		for j < TotalLenTpl && (DefTpl[j] == '\r' || DefTpl[j] == '\n') {
 			j++
 		}
 
-		if i == 总长文件 && j == 总长模板 {
+		if i == TotalLenFile && j == TotalLenTpl {
 			return true
 		}
 
-		if i == 总长文件 || j == 总长模板 {
+		if i == TotalLenFile || j == TotalLenTpl {
 			return false
 		}
 
-		if 当前文件[i] != 默认模板[j] {
+		if CurrFile[i] != DefTpl[j] {
 			return false
 		}
 

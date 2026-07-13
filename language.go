@@ -1,35 +1,35 @@
 package main
 
 var (
-	公告_游戏更新   = "检测到游戏版本更新"
-	公告_模组更新   = "模组更新已就绪"
-	公告_优雅重启上半 = "，服务器已自动保存，请尽快退出游戏，服务器将在 "
-	公告_优雅重启下半 = " 秒后强制关闭..."
+	AnnounceGameUpdate        = "检测到游戏版本更新"
+	AnnounceModUpdate         = "模组更新已就绪"
+	AnnounceGraceRebootPrefix = "，服务器已自动保存，请尽快退出游戏，服务器将在 "
+	AnnounceGraceRebootSuffix = " 秒后强制关闭..."
 )
 
-func 公告语言初始化() {
-	switch 全局配置.配置区1.公告语言 {
+func InitAnnounceLang() {
+	switch GlobalConf.Section1.AnnounceLang {
 	case "zh":
 	case "zh-t":
-		公告_游戏更新 = "檢測到遊戲版本更新"
-		公告_模组更新 = "模組更新已就緒"
-		公告_优雅重启上半 = "，伺服器已自動保存，請盡快退出遊戲，伺服器將在 "
-		公告_优雅重启下半 = " 秒後強制關閉..."
+		AnnounceGameUpdate = "檢測到遊戲版本更新"
+		AnnounceModUpdate = "模組更新已就緒"
+		AnnounceGraceRebootPrefix = "，伺服器已自動保存，請盡快退出遊戲，伺服器將在 "
+		AnnounceGraceRebootSuffix = " 秒後強制關閉..."
 	case "en":
-		公告_游戏更新 = "Game update detected"
-		公告_模组更新 = "Mod update ready"
-		公告_优雅重启上半 = ". Server saved. Please disconnect safely. Restarting in "
-		公告_优雅重启下半 = "s..."
+		AnnounceGameUpdate = "Game update detected"
+		AnnounceModUpdate = "Mod update ready"
+		AnnounceGraceRebootPrefix = ". Server saved. Please disconnect safely. Restarting in "
+		AnnounceGraceRebootSuffix = "s..."
 	case "jp":
-		公告_游戏更新 = "ゲームアップデートを検出"
-		公告_模组更新 = "MODの更新準備が完了"
-		公告_优雅重启上半 = "。サーバーは保存されました。安全な場所でログアウトしてください。再起動まで残り "
-		公告_优雅重启下半 = " 秒..."
+		AnnounceGameUpdate = "ゲームアップデートを検出"
+		AnnounceModUpdate = "MODの更新準備が完了"
+		AnnounceGraceRebootPrefix = "。サーバーは保存されました。安全な場所でログアウトしてください。再起動まで残り "
+		AnnounceGraceRebootSuffix = " 秒..."
 	case "ru":
-		公告_游戏更新 = "Обновление игры обнаружено"
-		公告_模组更新 = "Обновление мода готово"
-		公告_优雅重启上半 = ". Сервер сохранён. Пожалуйста, безопасно отключитесь. Перезагрузка через "
-		公告_优雅重启下半 = " секунд..."
+		AnnounceGameUpdate = "Обновление игры обнаружено"
+		AnnounceModUpdate = "Обновление мода готово"
+		AnnounceGraceRebootPrefix = ". Сервер сохранён. Пожалуйста, безопасно отключитесь. Перезагрузка через "
+		AnnounceGraceRebootSuffix = " секунд..."
 	default:
 	}
 }

@@ -6,35 +6,35 @@ import (
 	"time"
 )
 
-func 原子写文件(目标路径 string, 内容 []byte) uint8 {
-	目标目录 := filepath.Dir(目标路径)
-	if err := os.MkdirAll(目标目录, 0755); err != nil {
+func AtomicWriteFile(TargetPath string, RawContent []byte) uint8 {
+	TargetDir := filepath.Dir(TargetPath)
+	if err := os.MkdirAll(TargetDir, 0755); err != nil {
 		return 128
 	}
 
-	临时文件, err := os.CreateTemp(目标目录, "dstn_tmp_*")
+	TempFile, err := os.CreateTemp(TargetDir, "dstn_tmp_*")
 	if err != nil {
 		return 129
 	}
-	临时路径 := 临时文件.Name()
+	TmpPath := TempFile.Name()
 
-	defer os.Remove(临时路径)
+	defer os.Remove(TmpPath)
 
-	if _, err = 临时文件.Write(内容); err != nil {
-		临时文件.Close()
+	if _, err = TempFile.Write(RawContent); err != nil {
+		TempFile.Close()
 		return 130
 	}
 
-	if err = 临时文件.Sync(); err != nil {
-		临时文件.Close()
+	if err = TempFile.Sync(); err != nil {
+		TempFile.Close()
 		return 131
 	}
 
-	if err = 临时文件.Close(); err != nil {
+	if err = TempFile.Close(); err != nil {
 		return 132
 	}
 	for range 5 {
-		if err = os.Rename(临时路径, 目标路径); err == nil {
+		if err = os.Rename(TmpPath, TargetPath); err == nil {
 			return 0
 		}
 		time.Sleep(10 * time.Millisecond)

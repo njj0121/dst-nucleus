@@ -16,318 +16,318 @@ import (
 )
 
 const (
-	状态_执行成功  uint8 = 0
-	状态_无资源更新 uint8 = 1
-	状态_执行失败  uint8 = 2
-	状态_锁拦截   uint8 = 3
+	State_OK       uint8 = 0
+	State_NoUpdate uint8 = 1
+	State_Fail     uint8 = 2
+	State_Locked   uint8 = 3
 )
 
-func 自动安装() {
+func AutoInstall() {
 	for {
-		if _, err := os.Stat(steamcmd程序路径); err == nil {
+		if _, err := os.Stat(SteamCmdBinPath); err == nil {
 			break
 		} else if !os.IsNotExist(err) {
-			控制台合并输出换行(S2B("[fatal] steamcmd fs corruption: "), E2B(err))
+			LogOutLn(S2B("[fatal] steamcmd fs corruption: "), E2B(err))
 		}
 
-		控制台合并输出换行(S2B("[init] steamcmd not found at: "), S2B(全局配置.配置区1.SteamCmd路径), S2B(". bootstrapping..."))
+		LogOutLn(S2B("[init] steamcmd not found at: "), S2B(GlobalConf.Section1.SteamCmdPath), S2B(". bootstrapping..."))
 
-		if err := 安装SteamCMD(全局配置.配置区1.SteamCmd路径); err != 0 {
-			控制台合并输出换行(S2B("[warn] network or extract error. retrying in 5s..."))
+		if err := InstallSteamCmd(GlobalConf.Section1.SteamCmdPath); err != 0 {
+			LogOutLn(S2B("[warn] network or extract error. retrying in 5s..."))
 			time.Sleep(5 * time.Second)
 			continue
 		}
 
-		控制台合并输出换行(S2B("[init] steamcmd bootstrap complete."))
+		LogOutLn(S2B("[init] steamcmd bootstrap complete."))
 		break
 	}
 
 	for {
-		if _, err := os.Stat(游戏程序路径); err == nil {
+		if _, err := os.Stat(GameBinPath); err == nil {
 			break
 		} else if !os.IsNotExist(err) {
-			控制台合并输出换行(S2B("[fatal] game binary fs corruption: "), E2B(err))
+			LogOutLn(S2B("[fatal] game binary fs corruption: "), E2B(err))
 		}
-		控制台合并输出换行(S2B("[init] game binary missing ("), S2B(饥荒可执行文件名), S2B("). initiating fresh install..."))
-		控制台合并输出换行(S2B("[init] massive payload incoming. expect tcp timeout or long wait."))
+		LogOutLn(S2B("[init] game binary missing ("), S2B(DSTExecName), S2B("). initiating fresh install..."))
+		LogOutLn(S2B("[init] massive payload incoming. expect tcp timeout or long wait."))
 
-		执行游戏更新()
+		ExecGameUpdate()
 
-		if _, err := os.Stat(游戏程序路径); err == nil {
-			控制台合并输出换行(S2B("[init] game binary verification passed."))
+		if _, err := os.Stat(GameBinPath); err == nil {
+			LogOutLn(S2B("[init] game binary verification passed."))
 			break
 		} else {
-			控制台合并输出换行(S2B("[warn] game binary hash mismatch. retrying in 3s..."))
+			LogOutLn(S2B("[warn] game binary hash mismatch. retrying in 3s..."))
 			time.Sleep(3 * time.Second)
 		}
 	}
 }
 
-var 主动触发更新检测 = make(chan struct{})
-var 自动更新定时器间隔 time.Duration
+var TriggerUpdateCheck = make(chan struct{})
+var AutoUpdateTickerInterval time.Duration
 
-func 运行版本监控(生命周期 context.Context) {
-	定时器 := time.NewTicker(自动更新定时器间隔)
-	defer 定时器.Stop()
-	if !全局配置.配置区2.启用自动更新.Load() {
-		定时器.Stop()
-		定时器.C = nil
+func VersionProbe(LifeCtx context.Context) {
+	Timer := time.NewTicker(AutoUpdateTickerInterval)
+	defer Timer.Stop()
+	if !GlobalConf.Section2.EnableAutoUpdate.Load() {
+		Timer.Stop()
+		Timer.C = nil
 	}
 
 	for {
 		select {
-		case <-生命周期.Done():
+		case <-LifeCtx.Done():
 			return
 
-		case <-定时器.C:
-			if 探测游戏更新() == 状态_执行成功 {
+		case <-Timer.C:
+			if ProbeGameUpdate() == State_OK {
 				select {
-				case 动作总线 <- 动作_执行游戏本体更新:
+				case ActionBus <- Action_GameUpdate:
 				default:
 				}
 				return
 			}
 
-			if 探测模组更新() == 状态_执行成功 {
+			if ProbeModUpdate() == State_OK {
 				select {
-				case 动作总线 <- 动作_执行模组热更新:
+				case ActionBus <- Action_ModHotUpdate:
 				default:
 				}
 				return
 			}
 
-		case <-主动触发更新检测:
-			if 探测游戏更新() == 状态_执行成功 {
+		case <-TriggerUpdateCheck:
+			if ProbeGameUpdate() == State_OK {
 				select {
-				case 动作总线 <- 动作_执行游戏本体更新:
+				case ActionBus <- Action_GameUpdate:
 				default:
 				}
 				return
 			}
 
-			if 探测模组更新() == 状态_执行成功 {
+			if ProbeModUpdate() == State_OK {
 				select {
-				case 动作总线 <- 动作_执行模组热更新:
+				case ActionBus <- Action_ModHotUpdate:
 				default:
 				}
 				return
 			}
-			if 定时器.C != nil {
-				定时器.Reset(自动更新定时器间隔)
+			if Timer.C != nil {
+				Timer.Reset(AutoUpdateTickerInterval)
 			}
 		}
 	}
 }
 
-func 探测游戏更新() uint8 {
-	本地版本 := 读取文件获取游戏版本()
-	远程版本 := 获取远程版本号()
+func ProbeGameUpdate() uint8 {
+	LocalVer := ReadLocalVer()
+	RemoteVer := FetchRemoteVer()
 
-	if 本地版本 == "" || 远程版本 == "" {
-		控制台合并输出换行(S2B("[error] game version probe failed: local("), S2B(本地版本), S2B(") remote("), S2B(远程版本), S2B("), network or permission issue"))
-		return 状态_执行失败
+	if LocalVer == "" || RemoteVer == "" {
+		LogOutLn(S2B("[error] game version probe failed: local("), S2B(LocalVer), S2B(") remote("), S2B(RemoteVer), S2B("), network or permission issue"))
+		return State_Fail
 	}
 
-	if 本地版本 != 远程版本 {
-		控制台合并输出换行(S2B("[info] game update available: local("), S2B(本地版本), S2B(") -> remote("), S2B(远程版本), S2B(")"))
-		return 状态_执行成功
+	if LocalVer != RemoteVer {
+		LogOutLn(S2B("[info] game update available: local("), S2B(LocalVer), S2B(") -> remote("), S2B(RemoteVer), S2B(")"))
+		return State_OK
 	}
 
-	return 状态_无资源更新
+	return State_NoUpdate
 }
 
-var 全局目标模组缓存 = make([]uint64, 0, 256)
+var GlobalTargetModCache = make([]uint64, 0, 256)
 
-func 探测模组更新() uint8 {
-	if !全局配置.原子锁.模组正在繁忙.CompareAndSwap(false, true) {
-		控制台合并输出换行(S2B("[core] mod update lock denied. already in progress."))
-		return 状态_锁拦截
+func ProbeModUpdate() uint8 {
+	if !GlobalConf.AtomicGate.ModBusyGate.CompareAndSwap(false, true) {
+		LogOutLn(S2B("[core] mod update lock denied. already in progress."))
+		return State_Locked
 	}
-	defer 全局配置.原子锁.模组正在繁忙.Store(false)
-	模组列表, err := 读取行()
+	defer GlobalConf.AtomicGate.ModBusyGate.Store(false)
+	ModList, err := ReadLines()
 	if err != 0 {
-		控制台合并输出换行(S2B("[sys] mod.txt io error: "), S2B(全局配置.配置区1.模组Lua更新文件目标路径))
-		return 状态_执行失败
+		LogOutLn(S2B("[sys] mod.txt io error: "), S2B(GlobalConf.Section1.ModLuaTarget))
+		return State_Fail
 	}
 
-	目标模组 := 全局目标模组缓存[:0]
-	for _, m := range 模组列表 {
+	TargetMod := GlobalTargetModCache[:0]
+	for _, m := range ModList {
 		if m != 0 {
-			目标模组 = append(目标模组, m)
+			TargetMod = append(TargetMod, m)
 		}
 	}
 
-	if len(目标模组) == 0 {
-		return 状态_无资源更新
+	if len(TargetMod) == 0 {
+		return State_NoUpdate
 	}
 
-	本地时间表, _ := 获取本地模组时间表(目标模组)
-	远程时间表, err := 获取远程模组更新时间(目标模组)
+	LocalEpochMap, _ := FetchLocalModEpochs(TargetMod)
+	RemoteEpochMap, err := FetchRemoteModEpochs(TargetMod)
 
 	if err != 0 {
-		控制台合并输出换行(S2B("[sys] mod steam api query failed."))
-		return 状态_执行失败
+		LogOutLn(S2B("[sys] mod steam api query failed."))
+		return State_Fail
 	}
 
-	发现更新 := false
-	var 栈缓冲 [64]byte
-	var id栈缓冲 [24]byte
+	UpdateAvailable := false
+	var StackBuf [64]byte
+	var IdStackBuf [24]byte
 
-	for _, 模组ID := range 目标模组 {
-		本地时间 := 本地时间表[模组ID]
-		远程时间, 存在 := 远程时间表[模组ID]
+	for _, ModID := range TargetMod {
+		LocalTime := LocalEpochMap[ModID]
+		RemoteEpoch, Exists := RemoteEpochMap[ModID]
 
-		if 存在 && 远程时间 > 本地时间 {
-			发现更新 = true
+		if Exists && RemoteEpoch > LocalTime {
+			UpdateAvailable = true
 
-			载荷 := 栈缓冲[:0]
-			载荷 = strconv.AppendInt(载荷, 本地时间, 10)
-			载荷 = append(载荷, '-')
-			载荷 = append(载荷, '>')
-			载荷 = strconv.AppendInt(载荷, 远程时间, 10)
+			Payload := StackBuf[:0]
+			Payload = strconv.AppendInt(Payload, LocalTime, 10)
+			Payload = append(Payload, '-')
+			Payload = append(Payload, '>')
+			Payload = strconv.AppendInt(Payload, RemoteEpoch, 10)
 
-			ID := strconv.AppendUint(id栈缓冲[:0], 模组ID, 10)
-			控制台合并输出换行(S2B("[core] mod update triggered: ["), ID, S2B("] "), 载荷)
+			ID := strconv.AppendUint(IdStackBuf[:0], ModID, 10)
+			LogOutLn(S2B("[core] mod update triggered: ["), ID, S2B("] "), Payload)
 
 		}
 	}
 
-	if 发现更新 {
-		return 状态_执行成功
+	if UpdateAvailable {
+		return State_OK
 	}
 
-	return 状态_无资源更新
+	return State_NoUpdate
 }
 
-func 执行游戏更新() uint8 {
-	if !全局配置.原子锁.游戏正在更新.CompareAndSwap(false, true) {
-		控制台合并输出换行(S2B("[core] game update lock denied. already in progress."))
-		return 状态_锁拦截
+func ExecGameUpdate() uint8 {
+	if !GlobalConf.AtomicGate.GameUpdatingGate.CompareAndSwap(false, true) {
+		LogOutLn(S2B("[core] game update lock denied. already in progress."))
+		return State_Locked
 	}
-	defer 全局配置.原子锁.游戏正在更新.Store(false)
+	defer GlobalConf.AtomicGate.GameUpdatingGate.Store(false)
 
-	控制台合并输出换行(S2B("[core] dispatching steamcmd for game update..."))
+	LogOutLn(S2B("[core] dispatching steamcmd for game update..."))
 
-	steamcmd进程 := exec.CommandContext(全局生命周期, steamcmd程序路径, "+login", "anonymous", "+app_update", "343050", "validate", "+quit")
-	绑定子进程生命周期(steamcmd进程)
+	SteamCmdProc := exec.CommandContext(GlobalCtx, SteamCmdBinPath, "+login", "anonymous", "+app_update", "343050", "validate", "+quit")
+	BindProcLifetime(SteamCmdProc)
 
-	steamcmd进程.Stdout = os.Stdout
-	steamcmd进程.Stderr = os.Stderr
+	SteamCmdProc.Stdout = os.Stdout
+	SteamCmdProc.Stderr = os.Stderr
 
-	if err := steamcmd进程.Start(); err != nil {
-		控制台合并输出换行(S2B("[fatal] steamcmd spawn failed: "), E2B(err))
-		return 状态_执行失败
-	}
-
-	设置进程退出信号(steamcmd进程)
-
-	if err := steamcmd进程.Wait(); err != nil {
-		控制台合并输出换行(S2B("[fatal] steamcmd tcp stream broken: "), E2B(err))
-		return 状态_执行失败
+	if err := SteamCmdProc.Start(); err != nil {
+		LogOutLn(S2B("[fatal] steamcmd spawn failed: "), E2B(err))
+		return State_Fail
 	}
 
-	复制文件(全局配置.配置区1.模组Lua更新备份, 全局配置.配置区1.模组Lua更新文件目标路径)
+	SetProcExitSig(SteamCmdProc)
 
-	控制台合并输出换行(S2B("[core] game binary overwritten."))
-	return 状态_执行成功
+	if err := SteamCmdProc.Wait(); err != nil {
+		LogOutLn(S2B("[fatal] steamcmd tcp stream broken: "), E2B(err))
+		return State_Fail
+	}
+
+	CloneFile(GlobalConf.Section1.ModLuaBackup, GlobalConf.Section1.ModLuaTarget)
+
+	LogOutLn(S2B("[core] game binary overwritten."))
+	return State_OK
 }
 
-func 执行模组更新() uint8 {
-	if !全局配置.原子锁.模组正在繁忙.CompareAndSwap(false, true) {
-		控制台合并输出换行(S2B("[core] mod update lock denied. already in progress."))
-		return 状态_锁拦截
+func ExecModUpdate() uint8 {
+	if !GlobalConf.AtomicGate.ModBusyGate.CompareAndSwap(false, true) {
+		LogOutLn(S2B("[core] mod update lock denied. already in progress."))
+		return State_Locked
 	}
-	defer 全局配置.原子锁.模组正在繁忙.Store(false)
-	全局配置.原子锁.模组正在更新.Store(true)
-	defer 全局配置.原子锁.模组正在更新.Store(false)
+	defer GlobalConf.AtomicGate.ModBusyGate.Store(false)
+	GlobalConf.AtomicGate.ModUpdatingGate.Store(true)
+	defer GlobalConf.AtomicGate.ModUpdatingGate.Store(false)
 
-	模组列表, err := 读取行()
+	ModList, err := ReadLines()
 	if err != 0 {
-		控制台合并输出换行(S2B("[fatal] mod update aborted. io error: "), S2B(全局配置.配置区1.模组Lua更新文件目标路径))
-		return 状态_执行失败
+		LogOutLn(S2B("[fatal] mod update aborted. io error: "), S2B(GlobalConf.Section1.ModLuaTarget))
+		return State_Fail
 	}
 
-	var 目标模组 []uint64
-	for _, m := range 模组列表 {
+	var TargetMod []uint64
+	for _, m := range ModList {
 		if m != 0 {
-			目标模组 = append(目标模组, m)
+			TargetMod = append(TargetMod, m)
 		}
 	}
 
-	if len(目标模组) == 0 {
-		控制台合并输出换行(S2B("[core] mod.txt empty. bypassing mod update."))
-		return 状态_无资源更新
+	if len(TargetMod) == 0 {
+		LogOutLn(S2B("[core] mod.txt empty. bypassing mod update."))
+		return State_NoUpdate
 	}
 
-	最终更新名单 := 目标模组
+	FinalUpdateList := TargetMod
 
-	本地时间表, err1 := 获取本地模组时间表(目标模组)
-	远程时间表, err2 := 获取远程模组更新时间(目标模组)
+	LocalEpochMap, err1 := FetchLocalModEpochs(TargetMod)
+	RemoteEpochMap, err2 := FetchRemoteModEpochs(TargetMod)
 
 	if err1 == 0 && err2 == 0 {
-		var 差异模组 []uint64
-		for _, modID := range 目标模组 {
-			本地时间 := 本地时间表[modID]
-			远程时间, 存在 := 远程时间表[modID]
+		var DeltaMods []uint64
+		for _, modID := range TargetMod {
+			LocalTime := LocalEpochMap[modID]
+			RemoteEpoch, Exists := RemoteEpochMap[modID]
 
-			if 存在 && 远程时间 > 本地时间 {
-				差异模组 = append(差异模组, modID)
+			if Exists && RemoteEpoch > LocalTime {
+				DeltaMods = append(DeltaMods, modID)
 			}
 		}
 
-		if len(差异模组) > 0 {
-			最终更新名单 = 差异模组
-			控制台合并输出换行(S2B("[core] diff logic matched "), strconv.AppendInt(make([]byte, 0, 8), int64(len(最终更新名单)), 10), S2B(" outdated mods, performing incremental update..."))
+		if len(DeltaMods) > 0 {
+			FinalUpdateList = DeltaMods
+			LogOutLn(S2B("[core] diff logic matched "), strconv.AppendInt(make([]byte, 0, 8), int64(len(FinalUpdateList)), 10), S2B(" outdated mods, performing incremental update..."))
 		} else {
-			控制台合并输出换行(S2B("[warn] diff logic failed. forcing full fallback update..."))
+			LogOutLn(S2B("[warn] diff logic failed. forcing full fallback update..."))
 		}
 	} else {
-		控制台合并输出换行(S2B("[warn] steam api rejected query. downgrading to full blind update..."))
+		LogOutLn(S2B("[warn] steam api rejected query. downgrading to full blind update..."))
 	}
 
-	参数 := []string{"+login", "anonymous"}
-	for _, m := range 最终更新名单 {
-		参数 = append(参数, "+workshop_download_item", "322330", strconv.FormatUint(m, 10))
+	vArgs := []string{"+login", "anonymous"}
+	for _, m := range FinalUpdateList {
+		vArgs = append(vArgs, "+workshop_download_item", "322330", strconv.FormatUint(m, 10))
 	}
-	参数 = append(参数, "+quit")
+	vArgs = append(vArgs, "+quit")
 
-	var 栈缓冲 [8]byte
-	数量缓存 := strconv.AppendInt(栈缓冲[:0], int64(len(最终更新名单)), 10)
-	控制台合并输出换行(S2B("[core] injecting "), 数量缓存, S2B(" mod instructions to steamcmd..."))
+	var StackBuf [8]byte
+	CountCache := strconv.AppendInt(StackBuf[:0], int64(len(FinalUpdateList)), 10)
+	LogOutLn(S2B("[core] injecting "), CountCache, S2B(" mod instructions to steamcmd..."))
 
-	steamcmd进程 := exec.CommandContext(全局生命周期, steamcmd程序路径, 参数...)
-	绑定子进程生命周期(steamcmd进程)
+	SteamCmdProc := exec.CommandContext(GlobalCtx, SteamCmdBinPath, vArgs...)
+	BindProcLifetime(SteamCmdProc)
 
-	steamcmd进程.Stdout = os.Stdout
-	steamcmd进程.Stderr = os.Stderr
+	SteamCmdProc.Stdout = os.Stdout
+	SteamCmdProc.Stderr = os.Stderr
 
-	if err := steamcmd进程.Start(); err != nil {
-		控制台合并输出换行(S2B("[fatal] steamcmd spawn failed: "), E2B(err))
-		return 状态_执行失败
-	}
-
-	设置进程退出信号(steamcmd进程)
-
-	if err := steamcmd进程.Wait(); err != nil {
-		控制台合并输出换行(S2B("[fatal] steamcmd process killed mid-flight: "), E2B(err))
-		return 状态_执行失败
+	if err := SteamCmdProc.Start(); err != nil {
+		LogOutLn(S2B("[fatal] steamcmd spawn failed: "), E2B(err))
+		return State_Fail
 	}
 
-	控制台合并输出换行(S2B("[core] mod queue processed."))
-	return 状态_执行成功
+	SetProcExitSig(SteamCmdProc)
+
+	if err := SteamCmdProc.Wait(); err != nil {
+		LogOutLn(S2B("[fatal] steamcmd process killed mid-flight: "), E2B(err))
+		return State_Fail
+	}
+
+	LogOutLn(S2B("[core] mod queue processed."))
+	return State_OK
 }
 
-func 读取文件获取游戏版本() string {
-	const 最大重试次数 = 3
+func ReadLocalVer() string {
+	const MaxRetries = 3
 	target := S2B(`"TargetBuildID"`)
 
-	for i := 0; i < 最大重试次数; i++ {
-		读前状态, err := os.Stat(游戏版本acf文件路径)
+	for i := 0; i < MaxRetries; i++ {
+		PreReadStat, err := os.Stat(GameVerAcfPath)
 		if err != nil {
 			return ""
 		}
 
-		f, err := os.Open(游戏版本acf文件路径)
+		f, err := os.Open(GameVerAcfPath)
 		if err != nil {
 			return ""
 		}
@@ -350,7 +350,7 @@ func 读取文件获取游戏版本() string {
 
 				absIdx := offset + idx
 				if total-absIdx > 128 || err != nil {
-					match = 解析版本号(data[absIdx+len(target):])
+					match = ParseVerNum(data[absIdx+len(target):])
 					if match != "" {
 						break
 					}
@@ -373,12 +373,12 @@ func 读取文件获取游戏版本() string {
 		}
 		f.Close()
 
-		读后状态, err := os.Stat(游戏版本acf文件路径)
+		PostReadStat, err := os.Stat(GameVerAcfPath)
 		if err != nil {
 			return ""
 		}
 
-		if 读前状态.ModTime().Equal(读后状态.ModTime()) && 读前状态.Size() == 读后状态.Size() {
+		if PreReadStat.ModTime().Equal(PostReadStat.ModTime()) && PreReadStat.Size() == PostReadStat.Size() {
 			return match
 		}
 
@@ -388,232 +388,232 @@ func 读取文件获取游戏版本() string {
 	return ""
 }
 
-func 解析版本号(data []byte) string {
+func ParseVerNum(data []byte) string {
 	p := 0
-	长度 := len(data)
+	vLen := len(data)
 
-	for p < 长度 && (data[p] == ' ' || data[p] == '\t') {
+	for p < vLen && (data[p] == ' ' || data[p] == '\t') {
 		p++
 	}
 
-	if p < 长度 && data[p] == '"' {
+	if p < vLen && data[p] == '"' {
 		p++
 		start := p
-		for p < 长度 && data[p] >= '0' && data[p] <= '9' {
+		for p < vLen && data[p] >= '0' && data[p] <= '9' {
 			p++
 		}
-		if p > start && p < 长度 && data[p] == '"' {
+		if p > start && p < vLen && data[p] == '"' {
 			return B2S(data[start:p])
 		}
 	}
 	return ""
 }
 
-func 获取文件快照(文件路径 string) ([]byte, uint8) {
-	const 最大重试次数 = 3
+func ReadSnapshot(FilePath string) ([]byte, uint8) {
+	const MaxRetries = 3
 	const 防内存爆炸大小 = 1024 * 1024
 
-	for i := 0; i < 最大重试次数; i++ {
-		读前状态, err := os.Stat(文件路径)
+	for i := 0; i < MaxRetries; i++ {
+		PreReadStat, err := os.Stat(FilePath)
 		if err != nil {
 			return nil, 128
 		}
 
-		if 读前状态.Size() > 防内存爆炸大小 {
-			控制台合并输出换行(S2B("[warn] refusing to buffer massive payload (>1MB): "), S2B(文件路径))
+		if PreReadStat.Size() > 防内存爆炸大小 {
+			LogOutLn(S2B("[warn] refusing to buffer massive payload (>1MB): "), S2B(FilePath))
 			return nil, 132
 		}
 
-		内容, err := os.ReadFile(文件路径)
+		RawContent, err := os.ReadFile(FilePath)
 		if err != nil {
 			return nil, 129
 		}
 
-		读后状态, err := os.Stat(文件路径)
+		PostReadStat, err := os.Stat(FilePath)
 		if err != nil {
 			return nil, 130
 		}
 
-		if 读前状态.ModTime().Equal(读后状态.ModTime()) && 读前状态.Size() == 读后状态.Size() {
-			return 内容, 0
+		if PreReadStat.ModTime().Equal(PostReadStat.ModTime()) && PreReadStat.Size() == PostReadStat.Size() {
+			return RawContent, 0
 		}
 
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	控制台合并输出换行(S2B("[fatal] concurrent io tear detected during snapshot."))
+	LogOutLn(S2B("[fatal] concurrent io tear detected during snapshot."))
 	return nil, 131
 }
 
-func 获取远程版本号() string {
-	版本号, err := 通过HTTP获取远程游戏版本()
-	if err == 0 && 版本号 != "" {
-		return 版本号
+func FetchRemoteVer() string {
+	VerNum, err := FetchRemoteVerHTTP()
+	if err == 0 && VerNum != "" {
+		return VerNum
 	}
-	控制台合并输出换行(S2B("[warn] http probe failed/timeout. fallback to steamcmd local query."))
+	LogOutLn(S2B("[warn] http probe failed/timeout. fallback to steamcmd local query."))
 
-	steamcmd进程 := exec.CommandContext(全局生命周期, steamcmd程序路径, "+login", "anonymous", "+app_info_update", "1", "+app_info_print", "343050", "+quit")
-	绑定子进程生命周期(steamcmd进程)
+	SteamCmdProc := exec.CommandContext(GlobalCtx, SteamCmdBinPath, "+login", "anonymous", "+app_info_update", "1", "+app_info_print", "343050", "+quit")
+	BindProcLifetime(SteamCmdProc)
 
-	stdoutPipe, err1 := steamcmd进程.StdoutPipe()
+	stdoutPipe, err1 := SteamCmdProc.StdoutPipe()
 	if err1 != nil {
-		控制台合并输出换行(S2B("[sys] steamcmd pipe creation failed."))
+		LogOutLn(S2B("[sys] steamcmd pipe creation failed."))
 		return ""
 	}
 
-	if err := steamcmd进程.Start(); err != nil {
-		控制台合并输出换行(S2B("[sys] steamcmd start failed."))
+	if err := SteamCmdProc.Start(); err != nil {
+		LogOutLn(S2B("[sys] steamcmd start failed."))
 		return ""
 	}
 
-	设置进程退出信号(steamcmd进程)
+	SetProcExitSig(SteamCmdProc)
 
-	输出, err2 := io.ReadAll(stdoutPipe)
+	vStdout, err2 := io.ReadAll(stdoutPipe)
 
-	if err := steamcmd进程.Wait(); err != nil || err2 != nil {
-		控制台合并输出换行(S2B("[sys] steamcmd query failed."))
+	if err := SteamCmdProc.Wait(); err != nil || err2 != nil {
+		LogOutLn(S2B("[sys] steamcmd query failed."))
 		return ""
 	}
 
-	节点锚点 := bytes.Index(输出, []byte(`"public"`))
-	if 节点锚点 == -1 {
+	NodeAnchor := bytes.Index(vStdout, []byte(`"public"`))
+	if NodeAnchor == -1 {
 		return ""
 	}
 
-	目标偏移 := bytes.Index(输出[节点锚点:], []byte(`"buildid"`))
-	if 目标偏移 == -1 {
+	TargetOffset := bytes.Index(vStdout[NodeAnchor:], []byte(`"buildid"`))
+	if TargetOffset == -1 {
 		return ""
 	}
 
-	游标 := 节点锚点 + 目标偏移 + len(`"buildid"`)
+	vCursor := NodeAnchor + TargetOffset + len(`"buildid"`)
 
-	for 游标 < len(输出) && (输出[游标] < '0' || 输出[游标] > '9') {
-		游标++
+	for vCursor < len(vStdout) && (vStdout[vCursor] < '0' || vStdout[vCursor] > '9') {
+		vCursor++
 	}
-	数字起点 := 游标
+	NumOrigin := vCursor
 
-	for 游标 < len(输出) && 输出[游标] >= '0' && 输出[游标] <= '9' {
-		游标++
+	for vCursor < len(vStdout) && vStdout[vCursor] >= '0' && vStdout[vCursor] <= '9' {
+		vCursor++
 	}
 
-	if 游标 > 数字起点 {
-		return B2S(输出[数字起点:游标])
+	if vCursor > NumOrigin {
+		return B2S(vStdout[NumOrigin:vCursor])
 	}
 
 	return ""
 }
 
-func 通过HTTP获取远程游戏版本() (string, uint8) {
+func FetchRemoteVerHTTP() (string, uint8) {
 	apiURL := "https://api.steamcmd.net/v1/info/343050"
 
-	body := 发起竞速请求(apiURL, "")
+	body := FireRacingRequest(apiURL, "")
 	if body == nil {
 		return "", 128
 	}
 
-	分支锚点 := bytes.Index(body, []byte(`"branches"`))
-	if 分支锚点 == -1 {
-		控制台合并输出换行(S2B("[sys] ast parser: missing 'branches' node"))
+	BranchAnchor := bytes.Index(body, []byte(`"branches"`))
+	if BranchAnchor == -1 {
+		LogOutLn(S2B("[sys] ast parser: missing 'branches' node"))
 		return "", 130
 	}
 
-	节点锚点 := bytes.Index(body[分支锚点:], []byte(`"public"`))
-	if 节点锚点 == -1 {
-		控制台合并输出换行(S2B("[sys] ast parser: missing 'public' node"))
+	NodeAnchor := bytes.Index(body[BranchAnchor:], []byte(`"public"`))
+	if NodeAnchor == -1 {
+		LogOutLn(S2B("[sys] ast parser: missing 'public' node"))
 		return "", 130
 	}
-	绝对起始点 := 分支锚点 + 节点锚点
+	AbsStart := BranchAnchor + NodeAnchor
 
-	目标偏移 := bytes.Index(body[绝对起始点:], []byte(`"buildid"`))
-	if 目标偏移 == -1 {
-		控制台合并输出换行(S2B("[sys] ast parser: missing 'buildid' node"))
+	TargetOffset := bytes.Index(body[AbsStart:], []byte(`"buildid"`))
+	if TargetOffset == -1 {
+		LogOutLn(S2B("[sys] ast parser: missing 'buildid' node"))
 		return "", 130
 	}
 
-	游标 := 绝对起始点 + 目标偏移 + len(`"buildid"`)
+	vCursor := AbsStart + TargetOffset + len(`"buildid"`)
 
-	for 游标 < len(body) && (body[游标] < '0' || body[游标] > '9') {
-		游标++
+	for vCursor < len(body) && (body[vCursor] < '0' || body[vCursor] > '9') {
+		vCursor++
 	}
-	数字起点 := 游标
+	NumOrigin := vCursor
 
-	for 游标 < len(body) && body[游标] >= '0' && body[游标] <= '9' {
-		游标++
-	}
-
-	if 游标 > 数字起点 {
-		return B2S(body[数字起点:游标]), 0
+	for vCursor < len(body) && body[vCursor] >= '0' && body[vCursor] <= '9' {
+		vCursor++
 	}
 
-	控制台合并输出换行(S2B("[sys] ast parser: buildid overflow"))
+	if vCursor > NumOrigin {
+		return B2S(body[NumOrigin:vCursor]), 0
+	}
+
+	LogOutLn(S2B("[sys] ast parser: buildid overflow"))
 	return "", 130
 }
 
 var (
-	代理客户端 = &http.Client{
+	ProxyClient = &http.Client{
 		Timeout: 15 * time.Second,
 	}
-	直连客户端 = &http.Client{
+	DirectClient = &http.Client{
 		Timeout:   15 * time.Second,
 		Transport: &http.Transport{Proxy: nil},
 	}
 )
 
 // 由于国内网络环境极差，为了确保环境变量配置了代理，但有时代理可能失效的情况，同时发起代理和直连请求，哪个快看哪个
-func 发起竞速请求(目标URL string, 原始载荷 string) []byte {
-	竞速通道 := make(chan []byte, 2)
+func FireRacingRequest(TargetURL string, RawPayload string) []byte {
+	RacingPipe := make(chan []byte, 2)
 
-	发起请求 := func(探针 *http.Client) {
+	FireRequest := func(Probe *http.Client) {
 		var req *http.Request
 		var err error
 
-		if len(原始载荷) > 0 {
-			req, err = http.NewRequest("POST", 目标URL, strings.NewReader(原始载荷))
+		if len(RawPayload) > 0 {
+			req, err = http.NewRequest("POST", TargetURL, strings.NewReader(RawPayload))
 			if err == nil {
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			}
 		} else {
-			req, err = http.NewRequest("GET", 目标URL, nil)
+			req, err = http.NewRequest("GET", TargetURL, nil)
 		}
 
 		if err != nil {
-			竞速通道 <- nil
+			RacingPipe <- nil
 			return
 		}
 
-		resp, err := 探针.Do(req)
+		resp, err := Probe.Do(req)
 		if err != nil {
-			竞速通道 <- nil
+			RacingPipe <- nil
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != 200 {
-			竞速通道 <- nil
+			RacingPipe <- nil
 			return
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			竞速通道 <- nil
+			RacingPipe <- nil
 			return
 		}
 
-		竞速通道 <- body
+		RacingPipe <- body
 	}
 
-	go 发起请求(代理客户端)
-	go 发起请求(直连客户端)
+	go FireRequest(ProxyClient)
+	go FireRequest(DirectClient)
 
-	失败计数 := 0
+	FailCount := 0
 	for {
 		select {
-		case 响应 := <-竞速通道:
-			if 响应 != nil {
-				return 响应
+		case Resp := <-RacingPipe:
+			if Resp != nil {
+				return Resp
 			}
-			失败计数++
-			if 失败计数 == 2 {
+			FailCount++
+			if FailCount == 2 {
 				return nil
 			}
 		case <-time.After(5 * time.Second):
@@ -622,7 +622,7 @@ func 发起竞速请求(目标URL string, 原始载荷 string) []byte {
 	}
 }
 
-var 字符合法表 = [256]byte{
+var CharacterValidityTable = [256]byte{
 	'0': 1, '1': 1, '2': 1, '3': 1, '4': 1, '5': 1, '6': 1, '7': 1, '8': 1, '9': 1,
 	'A': 1, 'B': 1, 'C': 1, 'D': 1, 'E': 1, 'F': 1, 'G': 1, 'H': 1, 'I': 1, 'J': 1,
 	'K': 1, 'L': 1, 'M': 1, 'N': 1, 'O': 1, 'P': 1, 'Q': 1, 'R': 1, 'S': 1, 'T': 1,
@@ -633,316 +633,316 @@ var 字符合法表 = [256]byte{
 	'_': 1,
 }
 
-func 是否为变量字符(b byte) bool {
+func IsVarChar(b byte) bool {
 	//经过实际压力测试，查找表法比位图法快1倍以上
-	return 字符合法表[b] == 1
+	return CharacterValidityTable[b] == 1
 }
 
 // dedicated_server_mods_setup.lua
-func 解析Setup(内容 []byte, 结果 *[]uint64, 排重字典 map[uint64]struct{}, setup独有 map[uint64]struct{}) {
-	长度 := len(内容)
-	游标 := 0
+func ParseSetup(RawContent []byte, Result *[]uint64, DedupSet map[uint64]struct{}, SetupExclusive map[uint64]struct{}) {
+	vLen := len(RawContent)
+	vCursor := 0
 
-	for 游标 < 长度 {
-		c := 内容[游标]
+	for vCursor < vLen {
+		c := RawContent[vCursor]
 
-		if c == '-' && 游标+1 < 长度 && 内容[游标+1] == '-' {
-			游标 += 2
-			for 游标 < 长度 && 内容[游标] != '\n' {
-				游标++
+		if c == '-' && vCursor+1 < vLen && RawContent[vCursor+1] == '-' {
+			vCursor += 2
+			for vCursor < vLen && RawContent[vCursor] != '\n' {
+				vCursor++
 			}
 			continue
 		}
 
 		if c == '"' || c == '\'' {
-			引号 := c
-			游标++
-			for 游标 < 长度 {
-				if 内容[游标] == '\\' {
-					游标 += 2
+			Quote := c
+			vCursor++
+			for vCursor < vLen {
+				if RawContent[vCursor] == '\\' {
+					vCursor += 2
 					continue
 				}
-				if 内容[游标] == 引号 {
-					游标++
+				if RawContent[vCursor] == Quote {
+					vCursor++
 					break
 				}
-				游标++
+				vCursor++
 			}
 			continue
 		}
 
-		命中 := false
-		if 游标+16 <= 长度 && (string(内容[游标:游标+16]) == "ServerModSetup(\"" || string(内容[游标:游标+16]) == "ServerModSetup('") {
-			游标 += 16
-			命中 = true
-		} else if 游标+9 <= 长度 && string(内容[游标:游标+9]) == "workshop-" {
-			游标 += 9
-			命中 = true
+		IsHit := false
+		if vCursor+16 <= vLen && (string(RawContent[vCursor:vCursor+16]) == "ServerModSetup(\"" || string(RawContent[vCursor:vCursor+16]) == "ServerModSetup('") {
+			vCursor += 16
+			IsHit = true
+		} else if vCursor+9 <= vLen && string(RawContent[vCursor:vCursor+9]) == "workshop-" {
+			vCursor += 9
+			IsHit = true
 		}
 
-		if 命中 {
-			数字起点 := 游标
-			for 游标 < 长度 && 内容[游标] >= '0' && 内容[游标] <= '9' {
-				游标++
+		if IsHit {
+			NumOrigin := vCursor
+			for vCursor < vLen && RawContent[vCursor] >= '0' && RawContent[vCursor] <= '9' {
+				vCursor++
 			}
-			if 游标 > 数字起点 {
-				ID := 字节转Uint64(内容[数字起点:游标])
-				if _, 存在 := 排重字典[ID]; !存在 {
-					排重字典[ID] = struct{}{}
-					*结果 = append(*结果, ID)
+			if vCursor > NumOrigin {
+				ID := 字节转Uint64(RawContent[NumOrigin:vCursor])
+				if _, Exists := DedupSet[ID]; !Exists {
+					DedupSet[ID] = struct{}{}
+					*Result = append(*Result, ID)
 				}
-				setup独有[ID] = struct{}{}
+				SetupExclusive[ID] = struct{}{}
 			}
 
-			for 游标 < 长度 && (内容[游标] == '"' || 内容[游标] == '\'' || 内容[游标] == ')') {
-				游标++
+			for vCursor < vLen && (RawContent[vCursor] == '"' || RawContent[vCursor] == '\'' || RawContent[vCursor] == ')') {
+				vCursor++
 			}
 
 			continue
 		}
-		游标++
+		vCursor++
 	}
 }
 
 // modoverrides.lua
-func 解析Modoverrides(内容 []byte, 结果 *[]uint64, 排重字典 map[uint64]struct{}) {
-	长度 := len(内容)
-	游标 := 0
-	深度 := 0
+func ParseModOverrides(RawContent []byte, Result *[]uint64, DedupSet map[uint64]struct{}) {
+	vLen := len(RawContent)
+	vCursor := 0
+	Depth := 0
 
-	var 当前ID uint64
-	当前ID被禁用 := false
+	var CurrID uint64
+	IsIDDisabled := false
 
-	for 游标 < 长度 {
-		c := 内容[游标]
+	for vCursor < vLen {
+		c := RawContent[vCursor]
 
 		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
-			游标++
+			vCursor++
 			continue
 		}
 
-		if c == '-' && 游标+1 < 长度 && 内容[游标+1] == '-' {
-			游标 += 2
-			for 游标 < 长度 && 内容[游标] != '\n' {
-				游标++
+		if c == '-' && vCursor+1 < vLen && RawContent[vCursor+1] == '-' {
+			vCursor += 2
+			for vCursor < vLen && RawContent[vCursor] != '\n' {
+				vCursor++
 			}
 			continue
 		}
 
 		if c == '"' || c == '\'' {
-			引号 := c
-			游标++
-			for 游标 < 长度 {
-				if 内容[游标] == '\\' {
-					游标 += 2
+			Quote := c
+			vCursor++
+			for vCursor < vLen {
+				if RawContent[vCursor] == '\\' {
+					vCursor += 2
 					continue
 				}
-				if 内容[游标] == 引号 {
-					游标++
+				if RawContent[vCursor] == Quote {
+					vCursor++
 					break
 				}
-				游标++
+				vCursor++
 			}
 			continue
 		}
 
 		if c == '{' {
-			深度++
-			游标++
+			Depth++
+			vCursor++
 			continue
 		}
 
 		if c == '}' {
-			if 深度 == 2 && 当前ID != 0 {
-				if !当前ID被禁用 {
-					if _, 存在 := 排重字典[当前ID]; !存在 {
-						排重字典[当前ID] = struct{}{}
-						*结果 = append(*结果, 当前ID)
+			if Depth == 2 && CurrID != 0 {
+				if !IsIDDisabled {
+					if _, Exists := DedupSet[CurrID]; !Exists {
+						DedupSet[CurrID] = struct{}{}
+						*Result = append(*Result, CurrID)
 					}
 				}
-				当前ID = 0
+				CurrID = 0
 			}
-			深度--
-			游标++
+			Depth--
+			vCursor++
 			continue
 		}
 
-		if 深度 == 1 && c == '[' {
-			临时游标 := 游标 + 1
-			for 临时游标 < 长度 && (内容[临时游标] == ' ' || 内容[临时游标] == '\t' || 内容[临时游标] == '"' || 内容[临时游标] == '\'') {
-				临时游标++
+		if Depth == 1 && c == '[' {
+			TmpCursor := vCursor + 1
+			for TmpCursor < vLen && (RawContent[TmpCursor] == ' ' || RawContent[TmpCursor] == '\t' || RawContent[TmpCursor] == '"' || RawContent[TmpCursor] == '\'') {
+				TmpCursor++
 			}
 
-			if 临时游标+9 <= 长度 && string(内容[临时游标:临时游标+9]) == "workshop-" {
-				临时游标 += 9
-				数字起点 := 临时游标
-				for 临时游标 < 长度 && 内容[临时游标] >= '0' && 内容[临时游标] <= '9' {
-					临时游标++
+			if TmpCursor+9 <= vLen && string(RawContent[TmpCursor:TmpCursor+9]) == "workshop-" {
+				TmpCursor += 9
+				NumOrigin := TmpCursor
+				for TmpCursor < vLen && RawContent[TmpCursor] >= '0' && RawContent[TmpCursor] <= '9' {
+					TmpCursor++
 				}
-				if 临时游标 > 数字起点 {
-					可能ID := 字节转Uint64(内容[数字起点:临时游标])
-					for 临时游标 < 长度 && (内容[临时游标] == ' ' || 内容[临时游标] == '\t' || 内容[临时游标] == '"' || 内容[临时游标] == '\'') {
-						临时游标++
+				if TmpCursor > NumOrigin {
+					ProbeID := 字节转Uint64(RawContent[NumOrigin:TmpCursor])
+					for TmpCursor < vLen && (RawContent[TmpCursor] == ' ' || RawContent[TmpCursor] == '\t' || RawContent[TmpCursor] == '"' || RawContent[TmpCursor] == '\'') {
+						TmpCursor++
 					}
-					if 临时游标 < 长度 && 内容[临时游标] == ']' {
-						当前ID = 可能ID
-						当前ID被禁用 = false
-						游标 = 临时游标 + 1
+					if TmpCursor < vLen && RawContent[TmpCursor] == ']' {
+						CurrID = ProbeID
+						IsIDDisabled = false
+						vCursor = TmpCursor + 1
 						continue
 					}
 				}
 			}
 		}
 
-		if 深度 == 2 && 当前ID != 0 && c == 'e' {
-			if 游标+7 <= 长度 && string(内容[游标:游标+7]) == "enabled" {
-				前缀干净 := 游标 == 0 || !是否为变量字符(内容[游标-1])
-				后缀干净 := 游标+7 == 长度 || !是否为变量字符(内容[游标+7])
+		if Depth == 2 && CurrID != 0 && c == 'e' {
+			if vCursor+7 <= vLen && string(RawContent[vCursor:vCursor+7]) == "enabled" {
+				CleanPrefix := vCursor == 0 || !IsVarChar(RawContent[vCursor-1])
+				CleanSuffix := vCursor+7 == vLen || !IsVarChar(RawContent[vCursor+7])
 
-				if 前缀干净 && 后缀干净 {
-					检测游标 := 游标 + 7
-					找到等号 := false
-					for 检测游标 < 长度 {
-						k := 内容[检测游标]
+				if CleanPrefix && CleanSuffix {
+					ProbeCursor := vCursor + 7
+					EqFound := false
+					for ProbeCursor < vLen {
+						k := RawContent[ProbeCursor]
 						if k == ' ' || k == '\t' || k == '\r' || k == '\n' {
-							检测游标++
+							ProbeCursor++
 							continue
 						}
 						if k == '=' {
-							找到等号 = true
-							检测游标++
+							EqFound = true
+							ProbeCursor++
 							break
 						}
 						break
 					}
 
-					if 找到等号 {
-						for 检测游标 < 长度 {
-							k := 内容[检测游标]
+					if EqFound {
+						for ProbeCursor < vLen {
+							k := RawContent[ProbeCursor]
 							if k == ' ' || k == '\t' || k == '\r' || k == '\n' {
-								检测游标++
+								ProbeCursor++
 								continue
 							}
 							if k == 'f' || k == 'F' {
-								当前ID被禁用 = true
+								IsIDDisabled = true
 							}
 							break
 						}
-						游标 = 检测游标
+						vCursor = ProbeCursor
 						continue
 					}
 				}
 			}
 		}
 
-		游标++
+		vCursor++
 	}
 }
 
-var 模组字典池 = sync.Pool{
+var ModMapPool = sync.Pool{
 	New: func() any {
 		return make(map[uint64]struct{}, 64)
 	},
 }
 
-func 归还模组字典池(池 *sync.Pool, m map[uint64]struct{}) {
+func ReleaseModMap(vPool *sync.Pool, m map[uint64]struct{}) {
 	clear(m)
-	池.Put(m)
+	vPool.Put(m)
 }
 
-func 读取行() ([]uint64, uint8) {
-	排重字典 := 模组字典池.Get().(map[uint64]struct{})
-	setup独有字典 := 模组字典池.Get().(map[uint64]struct{})
+func ReadLines() ([]uint64, uint8) {
+	DedupSet := ModMapPool.Get().(map[uint64]struct{})
+	SetupOnlyDict := ModMapPool.Get().(map[uint64]struct{})
 
-	defer 归还模组字典池(&模组字典池, 排重字典)
-	defer 归还模组字典池(&模组字典池, setup独有字典)
+	defer ReleaseModMap(&ModMapPool, DedupSet)
+	defer ReleaseModMap(&ModMapPool, SetupOnlyDict)
 
-	var 结果 []uint64
+	var Result []uint64
 
-	for 文件索引, 路径 := range mod更新配置文件路径集 {
+	for FileIdx, 路径 := range ModUpdateConfPaths {
 		if 路径 == "" {
 			continue
 		}
 
-		内容, err := 获取文件快照(路径)
-		if err != 0 || len(内容) == 0 {
+		RawContent, err := ReadSnapshot(路径)
+		if err != 0 || len(RawContent) == 0 {
 			continue
 		}
 
-		if 文件索引 == 0 {
-			解析Setup(内容, &结果, 排重字典, setup独有字典)
+		if FileIdx == 0 {
+			ParseSetup(RawContent, &Result, DedupSet, SetupOnlyDict)
 		} else {
-			解析Modoverrides(内容, &结果, 排重字典)
+			ParseModOverrides(RawContent, &Result, DedupSet)
 		}
 	}
 
-	var 缺失的配置 []byte
+	var MissingConf []byte
 
-	for _, ID := range 结果 {
-		if _, 存在 := setup独有字典[ID]; !存在 {
-			缺失的配置 = append(缺失的配置, "ServerModSetup(\""...)
-			缺失的配置 = strconv.AppendUint(缺失的配置, ID, 10)
-			缺失的配置 = append(缺失的配置, "\")\n"...)
+	for _, ID := range Result {
+		if _, Exists := SetupOnlyDict[ID]; !Exists {
+			MissingConf = append(MissingConf, "ServerModSetup(\""...)
+			MissingConf = strconv.AppendUint(MissingConf, ID, 10)
+			MissingConf = append(MissingConf, "\")\n"...)
 		}
 	}
 
-	if len(缺失的配置) > 0 {
-		f, err := os.OpenFile(mod更新配置文件路径集[0], os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if len(MissingConf) > 0 {
+		f, err := os.OpenFile(ModUpdateConfPaths[0], os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err == nil {
-			f.Write(缺失的配置)
+			f.Write(MissingConf)
 			f.Sync()
 			f.Close()
-			控制台合并输出换行(S2B("[sys] unhandled mod detected. hot-patching setup.lua with "), strconv.AppendInt(make([]byte, 0, 4), int64(bytes.Count(缺失的配置, []byte("\n"))), 10), S2B(" payloads."))
+			LogOutLn(S2B("[sys] unhandled mod detected. hot-patching setup.lua with "), strconv.AppendInt(make([]byte, 0, 4), int64(bytes.Count(MissingConf, []byte("\n"))), 10), S2B(" payloads."))
 		}
 	}
 
-	return 结果, 0
+	return Result, 0
 }
 
 var (
-	全局本地模组时间表 = make(map[uint64]int64, 128)
-	全局远程模组时间表 = make(map[uint64]int64, 128)
+	LocalModEpochs  = make(map[uint64]int64, 128)
+	RemoteModEpochs = make(map[uint64]int64, 128)
 )
 
-func 获取本地模组时间表(目标模组列表 []uint64) (map[uint64]int64, uint8) {
-	for k := range 全局本地模组时间表 {
-		delete(全局本地模组时间表, k)
+func FetchLocalModEpochs(TargetModList []uint64) (map[uint64]int64, uint8) {
+	for k := range LocalModEpochs {
+		delete(LocalModEpochs, k)
 	}
-	acf文件目录 := filepath.Join(全局配置.配置区1.SteamCmd路径, "steamapps", "workshop", "appworkshop_322330.acf")
+	AcfDir := filepath.Join(GlobalConf.Section1.SteamCmdPath, "steamapps", "workshop", "appworkshop_322330.acf")
 
-	内容, err := 获取文件快照(acf文件目录)
+	RawContent, err := ReadSnapshot(AcfDir)
 	if err != 0 {
 		return make(map[uint64]int64), err
 	}
 
-	扫描器 := bufio.NewScanner(bytes.NewReader(内容))
+	Scanner := bufio.NewScanner(bytes.NewReader(RawContent))
 
-	目标集合 := make(map[uint64]bool)
-	for _, id := range 目标模组列表 {
-		目标集合[id] = true
+	TargetSet := make(map[uint64]bool)
+	for _, id := range TargetModList {
+		TargetSet[id] = true
 	}
 
 	var currentModID uint64
-	特征时间前缀 := []byte(`"timeupdated"`)
+	SigTimePrefix := []byte(`"timeupdated"`)
 
-	for 扫描器.Scan() {
-		行 := bytes.TrimSpace(扫描器.Bytes())
+	for Scanner.Scan() {
+		Line := bytes.TrimSpace(Scanner.Bytes())
 
-		if len(行) > 2 && 行[0] == '"' && 行[len(行)-1] == '"' {
-			可能ID := 行[1 : len(行)-1]
+		if len(Line) > 2 && Line[0] == '"' && Line[len(Line)-1] == '"' {
+			ProbeID := Line[1 : len(Line)-1]
 
-			是纯数字 := true
-			for i := 0; i < len(可能ID); i++ {
-				if 可能ID[i] < '0' || 可能ID[i] > '9' {
-					是纯数字 = false
+			IsNumeric := true
+			for i := 0; i < len(ProbeID); i++ {
+				if ProbeID[i] < '0' || ProbeID[i] > '9' {
+					IsNumeric = false
 					break
 				}
 			}
 
-			if 是纯数字 {
-				可能ID_num := 字节转Uint64(可能ID)
-				if 目标集合[可能ID_num] {
-					currentModID = 可能ID_num
+			if IsNumeric {
+				ProbeIDNum := 字节转Uint64(ProbeID)
+				if TargetSet[ProbeIDNum] {
+					currentModID = ProbeIDNum
 				} else {
 					currentModID = 0
 				}
@@ -950,159 +950,159 @@ func 获取本地模组时间表(目标模组列表 []uint64) (map[uint64]int64,
 			}
 		}
 
-		if currentModID != 0 && bytes.HasPrefix(行, 特征时间前缀) {
-			右引号位置 := bytes.LastIndexByte(行, '"')
-			if 右引号位置 > 0 {
-				左引号位置 := bytes.LastIndexByte(行[:右引号位置], '"')
-				if 左引号位置 > 0 {
-					ts, _ := strconv.ParseInt(B2S(行[左引号位置+1:右引号位置]), 10, 64)
-					全局本地模组时间表[currentModID] = ts
+		if currentModID != 0 && bytes.HasPrefix(Line, SigTimePrefix) {
+			RightQuotePos := bytes.LastIndexByte(Line, '"')
+			if RightQuotePos > 0 {
+				LeftQuotePos := bytes.LastIndexByte(Line[:RightQuotePos], '"')
+				if LeftQuotePos > 0 {
+					ts, _ := strconv.ParseInt(B2S(Line[LeftQuotePos+1:RightQuotePos]), 10, 64)
+					LocalModEpochs[currentModID] = ts
 
 					currentModID = 0
 				}
 			}
 		}
 	}
-	return 全局本地模组时间表, 0
+	return LocalModEpochs, 0
 }
 
 var (
-	全局API缓冲 [65536]byte
+	GlobalApiBuffer [65536]byte
 )
 
-func 获取远程模组更新时间(模组列表 []uint64) (map[uint64]int64, uint8) {
-	for k := range 全局远程模组时间表 {
-		delete(全局远程模组时间表, k)
+func FetchRemoteModEpochs(ModList []uint64) (map[uint64]int64, uint8) {
+	for k := range RemoteModEpochs {
+		delete(RemoteModEpochs, k)
 	}
-	if len(模组列表) == 0 {
+	if len(ModList) == 0 {
 		return nil, 0
 	}
 
 	const apiURL = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 
-	游标 := 0
+	vCursor := 0
 
-	游标 += copy(全局API缓冲[游标:], "itemcount=")
-	数字串 := strconv.AppendInt(全局API缓冲[游标:游标], int64(len(模组列表)), 10)
-	游标 += len(数字串)
+	vCursor += copy(GlobalApiBuffer[vCursor:], "itemcount=")
+	NumStr := strconv.AppendInt(GlobalApiBuffer[vCursor:vCursor], int64(len(ModList)), 10)
+	vCursor += len(NumStr)
 
-	for 索引, 模组ID := range 模组列表 {
-		全局API缓冲[游标] = '&'
-		游标++
-		游标 += copy(全局API缓冲[游标:], "publishedfileids[")
-		数字串 = strconv.AppendInt(全局API缓冲[游标:游标], int64(索引), 10)
-		游标 += len(数字串)
-		游标 += copy(全局API缓冲[游标:], "]=")
-		ID := strconv.AppendUint(全局API缓冲[游标:游标], 模组ID, 10)
-		游标 += len(ID)
+	for Idx, ModID := range ModList {
+		GlobalApiBuffer[vCursor] = '&'
+		vCursor++
+		vCursor += copy(GlobalApiBuffer[vCursor:], "publishedfileids[")
+		NumStr = strconv.AppendInt(GlobalApiBuffer[vCursor:vCursor], int64(Idx), 10)
+		vCursor += len(NumStr)
+		vCursor += copy(GlobalApiBuffer[vCursor:], "]=")
+		ID := strconv.AppendUint(GlobalApiBuffer[vCursor:vCursor], ModID, 10)
+		vCursor += len(ID)
 	}
 
-	请求载荷 := string(全局API缓冲[:游标])
+	ReqPayload := string(GlobalApiBuffer[:vCursor])
 
-	body := 发起竞速请求(apiURL, 请求载荷)
+	body := FireRacingRequest(apiURL, ReqPayload)
 	if body == nil {
 		return nil, 128
 	}
 
-	偏移量 := 0
-	载荷长度 := len(body)
+	Offset := 0
+	PayloadLen := len(body)
 
-	特征ID := []byte(`"publishedfileid":"`)
-	特征时间 := []byte(`"time_updated":`)
+	SigID := []byte(`"publishedfileid":"`)
+	SigTime := []byte(`"time_updated":`)
 
-	for 偏移量 < 载荷长度 {
-		id锚点 := bytes.Index(body[偏移量:], 特征ID)
-		if id锚点 == -1 {
+	for Offset < PayloadLen {
+		IdAnchor := bytes.Index(body[Offset:], SigID)
+		if IdAnchor == -1 {
 			break
 		}
-		偏移量 += id锚点 + len(特征ID)
+		Offset += IdAnchor + len(SigID)
 
-		右引号 := bytes.IndexByte(body[偏移量:], '"')
-		if 右引号 == -1 {
+		RightQuote := bytes.IndexByte(body[Offset:], '"')
+		if RightQuote == -1 {
 			break
 		}
-		modID := 字节转Uint64(body[偏移量 : 偏移量+右引号])
-		偏移量 += 右引号 + 1
+		modID := 字节转Uint64(body[Offset : Offset+RightQuote])
+		Offset += RightQuote + 1
 
-		时间锚点 := bytes.Index(body[偏移量:], 特征时间)
-		if 时间锚点 == -1 {
+		TimeAnchor := bytes.Index(body[Offset:], SigTime)
+		if TimeAnchor == -1 {
 			break
 		}
-		偏移量 += 时间锚点 + len(特征时间)
+		Offset += TimeAnchor + len(SigTime)
 
-		数字开始 := 偏移量
-		for 数字开始 < 载荷长度 && body[数字开始] == ' ' {
-			数字开始++
+		NumStart := Offset
+		for NumStart < PayloadLen && body[NumStart] == ' ' {
+			NumStart++
 		}
-		数字结束 := 数字开始
-		for 数字结束 < 载荷长度 && body[数字结束] >= '0' && body[数字结束] <= '9' {
-			数字结束++
+		NumEnd := NumStart
+		for NumEnd < PayloadLen && body[NumEnd] >= '0' && body[NumEnd] <= '9' {
+			NumEnd++
 		}
 
-		时间数字 := string(body[数字开始:数字结束])
-		ts, _ := strconv.ParseInt(时间数字, 10, 64)
-		全局远程模组时间表[modID] = ts
+		TimeStr := string(body[NumStart:NumEnd])
+		ts, _ := strconv.ParseInt(TimeStr, 10, 64)
+		RemoteModEpochs[modID] = ts
 
-		偏移量 = 数字结束
+		Offset = NumEnd
 	}
 
-	return 全局远程模组时间表, 0
+	return RemoteModEpochs, 0
 }
 
-func 复制文件(源路径, 目标路径 string) (int64, uint8) {
-	const 最大重试次数 = 3
+func CloneFile(SrcPath, TargetPath string) (int64, uint8) {
+	const MaxRetries = 3
 
-	for range 最大重试次数 {
-		读前状态, err := os.Stat(源路径)
+	for range MaxRetries {
+		PreReadStat, err := os.Stat(SrcPath)
 		if err != nil {
 			return 0, 128
 		}
 
-		源文件, err := os.Open(源路径)
+		SrcFile, err := os.Open(SrcPath)
 		if err != nil {
 			return 0, 129
 		}
 
-		目标目录 := filepath.Dir(目标路径)
-		os.MkdirAll(目标目录, 0755)
+		TargetDir := filepath.Dir(TargetPath)
+		os.MkdirAll(TargetDir, 0755)
 
-		临时文件, err := os.CreateTemp(目标目录, "tmp_clone_*")
+		TempFile, err := os.CreateTemp(TargetDir, "tmp_clone_*")
 		if err != nil {
-			源文件.Close()
+			SrcFile.Close()
 			return 0, 130
 		}
-		临时路径 := 临时文件.Name()
+		TmpPath := TempFile.Name()
 
-		拷贝字节数, err := io.Copy(临时文件, 源文件)
-		源文件.Close()
+		CopiedBytes, err := io.Copy(TempFile, SrcFile)
+		SrcFile.Close()
 
 		if err != nil {
-			临时文件.Close()
-			os.Remove(临时路径)
-			控制台合并输出换行(S2B("[sys] kernel copy interrupted: "), E2B(err))
+			TempFile.Close()
+			os.Remove(TmpPath)
+			LogOutLn(S2B("[sys] kernel copy interrupted: "), E2B(err))
 			return 0, 128
 		}
 
-		临时文件.Sync()
-		临时文件.Close()
+		TempFile.Sync()
+		TempFile.Close()
 
-		读后状态, err := os.Stat(源路径)
+		PostReadStat, err := os.Stat(SrcPath)
 		if err != nil {
-			os.Remove(临时路径)
-			控制台合并输出换行(E2B(err))
+			os.Remove(TmpPath)
+			LogOutLn(E2B(err))
 			return 0, 129
 		}
 
-		if !读前状态.ModTime().Equal(读后状态.ModTime()) || 读前状态.Size() != 读后状态.Size() {
-			os.Remove(临时路径)
+		if !PreReadStat.ModTime().Equal(PostReadStat.ModTime()) || PreReadStat.Size() != PostReadStat.Size() {
+			os.Remove(TmpPath)
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
 
 		var renameErr error
-		const 最大重试次数 = 5
-		for range 最大重试次数 {
-			renameErr = os.Rename(临时路径, 目标路径)
+		const MaxRetries = 5
+		for range MaxRetries {
+			renameErr = os.Rename(TmpPath, TargetPath)
 			if renameErr == nil {
 				break
 			}
@@ -1110,15 +1110,15 @@ func 复制文件(源路径, 目标路径 string) (int64, uint8) {
 		}
 
 		if renameErr != nil {
-			os.Remove(临时路径)
-			控制台合并输出换行(S2B("[sys] atomic rename access denied: "), E2B(renameErr))
+			os.Remove(TmpPath)
+			LogOutLn(S2B("[sys] atomic rename access denied: "), E2B(renameErr))
 			return 0, 130
 		}
 
-		return 拷贝字节数, 0
+		return CopiedBytes, 0
 	}
 
-	控制台合并输出换行(S2B("[fatal] continuous physical concurrency tear during clone."))
+	LogOutLn(S2B("[fatal] continuous physical concurrency tear during clone."))
 	return 0, 131
 }
 

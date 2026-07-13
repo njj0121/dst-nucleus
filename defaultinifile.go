@@ -1,6 +1,6 @@
 package main
 
-const 默认主世界配置 = `[NETWORK]
+const DefMasterConf = `[NETWORK]
 server_port = 11000
 
 [SHARD]
@@ -10,7 +10,7 @@ is_master = true
 master_server_port = 27018
 authentication_port = 8768`
 
-const 默认洞穴配置 = `[NETWORK]
+const DefCavesConf = `[NETWORK]
 server_port = 11001
 
 [SHARD]
@@ -21,7 +21,7 @@ name = Caves
 master_server_port = 27019
 authentication_port = 8769`
 
-const 默认cluster = `
+const DefCluster = `
 [GAMEPLAY]
 game_mode = endless
 max_players = 32

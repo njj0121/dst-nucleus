@@ -13,28 +13,28 @@ func main() {
 		panic(err)
 	}
 
-	源码 := rawLua
+	SrcCode := rawLua
 
-	按行分割 := bytes.Split(源码, []byte("\n"))
-	var 纯净代码块 [][]byte
+	SplitByLine := bytes.Split(SrcCode, []byte("\n"))
+	var CleanCodeChunk [][]byte
 
-	for _, 行 := range 按行分割 {
-		if 索引 := bytes.Index(行, []byte("--")); 索引 != -1 {
-			行 = 行[:索引]
+	for _, Line := range SplitByLine {
+		if Idx := bytes.Index(Line, []byte("--")); Idx != -1 {
+			Line = Line[:Idx]
 		}
 
-		行 = bytes.TrimSpace(行)
+		Line = bytes.TrimSpace(Line)
 
-		if len(行) > 0 {
-			纯净代码块 = append(纯净代码块, 行)
+		if len(Line) > 0 {
+			CleanCodeChunk = append(CleanCodeChunk, Line)
 		}
 	}
 
-	压扁 := bytes.Join(纯净代码块, []byte(" "))
+	Flatten := bytes.Join(CleanCodeChunk, []byte(" "))
 
-	动态寄生虫指令 := append(压扁, '\n')
+	DynamicParasiteCmd := append(Flatten, '\n')
 
-	err = os.WriteFile("parasite_min.lua", 动态寄生虫指令, 0644)
+	err = os.WriteFile("parasite_min.lua", DynamicParasiteCmd, 0644)
 	if err != nil {
 		panic(err)
 	}
